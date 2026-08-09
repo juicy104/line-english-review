@@ -5,8 +5,6 @@ coverage
 .env.*
 !.env.example
 
-prisma/migrations
-
 .DS_Store
 .idea
 .vscode

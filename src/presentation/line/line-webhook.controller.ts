@@ -25,18 +25,18 @@ export class LineWebhookController {
 
   @Post('webhook')
   @HttpCode(200)
-  handleWebhook(
+  async handleWebhook(
     @Headers('x-line-signature') signature: string | undefined,
     @Req() request: RawBodyRequest,
     @Body() payload: LineWebhookPayloadDto,
-  ): { status: 'ok' } {
+  ): Promise<{ status: 'ok' }> {
     const rawBody = request.rawBody ?? Buffer.from(JSON.stringify(payload));
 
     if (!this.signatureVerifier.verify(rawBody, signature)) {
       throw new UnauthorizedException('Invalid LINE signature');
     }
 
-    this.handleLineWebhookUseCase.execute(payload);
+    await this.handleLineWebhookUseCase.execute(payload);
 
     return { status: 'ok' };
   }

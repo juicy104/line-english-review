@@ -39,12 +39,14 @@ PORT=3000
 DATABASE_URL=
 LINE_CHANNEL_SECRET=
 LINE_CHANNEL_ACCESS_TOKEN=
+NGROK_AUTHTOKEN=
 ```
 
 - `PORT`: NestJSの待受ポート
 - `DATABASE_URL`: Supabase PostgreSQLなどの接続URL
 - `LINE_CHANNEL_SECRET`: LINE Webhook署名検証用のChannel Secret
 - `LINE_CHANNEL_ACCESS_TOKEN`: LINE Messaging API用のChannel Access Token
+- `NGROK_AUTHTOKEN`: ローカルWebhook確認用のngrok Authtoken
 
 `LINE_CHANNEL_SECRET` が未設定の場合、ローカル疎通用にWebhook署名検証はスキップされます。設定済みの場合は `x-line-signature` を検証します。
 
@@ -68,6 +70,18 @@ curl http://localhost:3000/health
 curl -i -X POST http://localhost:3000/line/webhook \
   -H 'Content-Type: application/json' \
   -d '{"events":[]}'
+```
+
+LINE Developersにローカル環境のWebhook URLを設定する場合は、ngrokをDocker経由で起動します。
+
+```bash
+docker compose --profile tunnel up
+```
+
+ngrokの公開URLは http://localhost:4040 で確認できます。LINE DevelopersのWebhook URLには次の形式で設定してください。
+
+```text
+https://<ngrokのURL>/line/webhook
 ```
 
 ## npm scripts

@@ -9,11 +9,13 @@ export class LineSignatureVerifierService {
   constructor(private readonly configService: ConfigService) {}
 
   verify(rawBody: Buffer, signature: string | undefined): boolean {
-    const channelSecret = this.configService.get<string>('LINE_CHANNEL_SECRET');
+    const channelSecret =
+      this.configService.get<string>('LINE_MESSAGING_CHANNEL_SECRET') ||
+      this.configService.get<string>('LINE_CHANNEL_SECRET');
 
     if (!channelSecret) {
       this.logger.warn(
-        'LINE_CHANNEL_SECRET is not set. Skipping LINE signature verification.',
+        'LINE_MESSAGING_CHANNEL_SECRET is not set. Skipping LINE signature verification.',
       );
       return true;
     }

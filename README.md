@@ -42,8 +42,8 @@ APP_BASE_URL=http://localhost:3000
 SESSION_SECRET=local-session-secret-change-me
 LINE_LOGIN_CHANNEL_ID=
 LINE_LOGIN_CHANNEL_SECRET=
-LINE_CHANNEL_SECRET=
-LINE_CHANNEL_ACCESS_TOKEN=
+LINE_MESSAGING_CHANNEL_SECRET=
+LINE_MESSAGING_CHANNEL_ACCESS_TOKEN=
 NGROK_AUTHTOKEN=
 ```
 
@@ -53,8 +53,8 @@ NGROK_AUTHTOKEN=
 - `SESSION_SECRET`: 管理画面ログインCookie署名用の秘密文字列
 - `LINE_LOGIN_CHANNEL_ID`: LINE Login Channel ID
 - `LINE_LOGIN_CHANNEL_SECRET`: LINE Login Channel Secret
-- `LINE_CHANNEL_SECRET`: LINE Webhook署名検証用のChannel Secret
-- `LINE_CHANNEL_ACCESS_TOKEN`: LINE Messaging API用のChannel Access Token
+- `LINE_MESSAGING_CHANNEL_SECRET`: LINE Messaging API Channel Secret。Webhook署名検証に使います
+- `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN`: LINE Messaging API Channel Access Token。返信やPush配信に使います
 - `NGROK_AUTHTOKEN`: ローカルWebhook確認用のngrok Authtoken
 
 Mac側のDBクライアントから接続する場合は、ホスト名だけ `localhost` に変えて接続します。
@@ -63,7 +63,7 @@ Mac側のDBクライアントから接続する場合は、ホスト名だけ `l
 postgresql://postgres:postgres@localhost:5432/line_english_app?schema=public
 ```
 
-`LINE_CHANNEL_SECRET` が未設定の場合、ローカル疎通用にWebhook署名検証はスキップされます。設定済みの場合は `x-line-signature` を検証します。
+`LINE_MESSAGING_CHANNEL_SECRET` が未設定の場合、ローカル疎通用にWebhook署名検証はスキップされます。設定済みの場合は `x-line-signature` を検証します。
 
 ## Health Check
 
@@ -113,7 +113,7 @@ http://localhost:3000/auth/line/callback
 https://<ngrokのURL>/auth/line/callback
 ```
 
-Fly.ioにデプロイする場合は、必ず `APP_BASE_URL`, `SESSION_SECRET`, `LINE_LOGIN_CHANNEL_ID`, `LINE_LOGIN_CHANNEL_SECRET` をsecretに設定してください。
+Fly.ioにデプロイする場合は、必ず `APP_BASE_URL`, `SESSION_SECRET`, `LINE_LOGIN_CHANNEL_ID`, `LINE_LOGIN_CHANNEL_SECRET`, `LINE_MESSAGING_CHANNEL_SECRET` をsecretに設定してください。LINEへの返信やPush配信を使う場合は `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN` も設定します。
 
 ## npm scripts
 

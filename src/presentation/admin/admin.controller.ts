@@ -147,6 +147,7 @@ const adminHtml = `<!doctype html>
       background: var(--bg);
       color: var(--ink);
       font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-text-size-adjust: 100%;
     }
     header {
       background: var(--panel);
@@ -202,6 +203,7 @@ const adminHtml = `<!doctype html>
       border: 1px solid var(--line);
       border-radius: 6px;
       font: inherit;
+      font-size: 16px;
       padding: 10px;
       width: 100%;
     }
@@ -214,6 +216,7 @@ const adminHtml = `<!doctype html>
       cursor: pointer;
       font: inherit;
       font-weight: 700;
+      min-height: 44px;
       padding: 10px 13px;
       white-space: nowrap;
     }
@@ -259,11 +262,70 @@ const adminHtml = `<!doctype html>
     .row > * { flex: 1; }
     .table-wrap { overflow: auto; }
     @media (max-width: 760px) {
+      body { padding-bottom: 70px; }
+      header {
+        padding: 12px 12px 0;
+      }
+      nav {
+        background: var(--panel);
+        border-top: 1px solid var(--line);
+        bottom: 0;
+        box-shadow: 0 -6px 18px rgba(16, 24, 40, 0.08);
+        display: grid;
+        gap: 0;
+        grid-template-columns: repeat(3, 1fr);
+        left: 0;
+        padding: 6px 8px env(safe-area-inset-bottom);
+        position: fixed;
+        right: 0;
+        z-index: 3;
+      }
+      nav button {
+        border-bottom: 0;
+        border-radius: 6px;
+        color: var(--muted);
+        padding: 10px 4px;
+      }
+      nav button.active {
+        background: #e7f8ee;
+        color: var(--accent-dark);
+      }
       .form-grid { grid-template-columns: 1fr; }
       .topbar { align-items: flex-start; flex-direction: column; }
       .status { text-align: left; }
       main { padding: 12px; }
-      td.actions { min-width: 150px; }
+      section {
+        border-left: 0;
+        border-radius: 0;
+        border-right: 0;
+        margin: 0 -12px;
+        padding: 14px 12px;
+      }
+      table, thead, tbody, tr, th, td { display: block; }
+      thead { display: none; }
+      tr {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin-bottom: 12px;
+        padding: 10px;
+      }
+      td {
+        border-bottom: 0;
+        padding: 7px 0;
+      }
+      td::before {
+        color: var(--muted);
+        content: attr(data-label);
+        display: block;
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+      td.actions {
+        width: auto;
+      }
+      td.actions::before { content: ''; display: none; }
+      .row { gap: 10px; }
     }
   </style>
 </head>
@@ -417,10 +479,10 @@ const adminHtml = `<!doctype html>
 
     function renderCardRow(card) {
       return '<tr data-card-id="' + card.id + '">' +
-        '<td><input data-field="front" value="' + escapeAttr(card.front) + '"></td>' +
-        '<td><input data-field="back" value="' + escapeAttr(card.back) + '"></td>' +
-        '<td><textarea data-field="example">' + escapeHtml(card.example || '') + '</textarea></td>' +
-        '<td><textarea data-field="note">' + escapeHtml(card.note || '') + '</textarea></td>' +
+        '<td data-label="Front"><input data-field="front" value="' + escapeAttr(card.front) + '"></td>' +
+        '<td data-label="Back"><input data-field="back" value="' + escapeAttr(card.back) + '"></td>' +
+        '<td data-label="Example"><textarea data-field="example">' + escapeHtml(card.example || '') + '</textarea></td>' +
+        '<td data-label="Note"><textarea data-field="note">' + escapeHtml(card.note || '') + '</textarea></td>' +
         '<td class="actions"><div class="row"><button class="secondary" data-action="save" type="button">Save</button><button class="danger" data-action="delete" type="button">Delete</button></div></td>' +
       '</tr>';
     }

@@ -79,13 +79,7 @@ curl -i -X POST http://localhost:3000/line/webhook \
   -d '{"events":[]}'
 ```
 
-LINE Developersにローカル環境のWebhook URLを設定する場合は、ngrokをDocker経由で起動します。
-
-```bash
-docker compose --profile tunnel up
-```
-
-ngrokの公開URLは http://localhost:4040 で確認できます。LINE DevelopersのWebhook URLには次の形式で設定してください。
+ngrokもDocker Composeで一緒に起動します。公開URLは http://localhost:4040 で確認できます。LINE DevelopersのWebhook URLには次の形式で設定してください。
 
 ```text
 https://<ngrokのURL>/line/webhook

@@ -119,7 +119,7 @@ Fly.ioにデプロイする場合は、必ず `APP_BASE_URL`, `SESSION_SECRET`, 
 
 ## Delivery Job
 
-外部cronから次のエンドポイントを叩くと、各LINEユーザーに期限到来カードを最大1件ずつPush配信します。
+外部cronから次のエンドポイントを叩くと、各LINEユーザーに未復習の期限到来カードを最大1件ずつPush配信します。配信内容はカード表面だけです。送信後はそのカードを `ASKED` に更新し、次の配信対象から外します。
 
 ```bash
 curl -X POST http://localhost:3000/internal/jobs/deliver-due-cards \

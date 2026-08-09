@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AuthProvider } from '@prisma/client';
+import { AuthProvider, CardProgressStatus } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { LineMessagingClientService } from '../../infrastructure/line/line-messaging-client.service';
 
@@ -56,7 +56,12 @@ export class DeliverDueCardsService {
 
           await this.prisma.cardProgress.update({
             where: { id: progress.id },
-            data: { dueAt: nextDueAt },
+            data: {
+              status: CardProgressStatus.ASKED,
+              askedAt: now,
+              answeredAt: null,
+              dueAt: nextDueAt,
+            },
           });
         }
 
@@ -91,6 +96,7 @@ export class DeliverDueCardsService {
     const progress = await this.prisma.cardProgress.findFirst({
       where: {
         userId,
+        status: CardProgressStatus.QUEUED,
         dueAt: { lte: now },
       },
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
@@ -119,6 +125,7 @@ export class DeliverDueCardsService {
       data: {
         userId,
         cardId: cardWithoutProgress.id,
+        status: CardProgressStatus.QUEUED,
         dueAt: now,
       },
       include: { card: true },
@@ -126,19 +133,6 @@ export class DeliverDueCardsService {
   }
 }
 
-function formatReviewMessage(card: {
-  front: string;
-  back: string;
-  example: string | null;
-  note: string | null;
-}) {
-  return [
-    `復習: ${card.front}`,
-    '',
-    `答え: ${card.back}`,
-    card.example ? `例文: ${card.example}` : undefined,
-    card.note ? `メモ: ${card.note}` : undefined,
-  ]
-    .filter(Boolean)
-    .join('\n');
+function formatReviewMessage(card: { front: string }) {
+  return `復習: ${card.front}`;
 }

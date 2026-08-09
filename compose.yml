@@ -37,13 +37,15 @@ services:
 
   ngrok:
     image: ngrok/ngrok:latest
-    command: ['http', 'http://app:3000']
+    command: ['start', '--all', '--config', '/etc/ngrok.yml']
     depends_on:
       - app
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
     ports:
       - '4040:4040'
+    volumes:
+      - ./ngrok.yml:/etc/ngrok.yml:ro
 
 volumes:
   postgres-data:

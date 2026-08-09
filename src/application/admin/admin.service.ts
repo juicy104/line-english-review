@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
 type CreateDeckInput = {
-  userId: string;
   name: string;
   description?: string;
 };
@@ -26,9 +25,9 @@ type UpdateCardInput = {
 export class AdminService {
   constructor(private readonly prisma: PrismaService) {}
 
-  listUsers() {
+  listUsers(userId: string) {
     return this.prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
+      where: { id: userId },
       include: {
         authAccounts: {
           orderBy: { createdAt: 'asc' },
@@ -52,30 +51,34 @@ export class AdminService {
     });
   }
 
-  createDeck(input: CreateDeckInput) {
+  createDeck(userId: string, input: CreateDeckInput) {
     return this.prisma.deck.create({
       data: {
-        userId: input.userId,
+        userId,
         name: input.name.trim(),
         description: input.description?.trim() || null,
       },
     });
   }
 
-  listCards(deckId: string) {
+  listCards(userId: string, deckId: string) {
     return this.prisma.card.findMany({
-      where: { deckId },
+      where: { deckId, deck: { userId } },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  createCard(input: CreateCardInput) {
+  async createCard(userId: string, input: CreateCardInput) {
+    await this.assertDeckOwner(userId, input.deckId);
+
     return this.prisma.card.create({
       data: this.toCardData(input),
     });
   }
 
-  async importCardsFromCsv(deckId: string, csv: string) {
+  async importCardsFromCsv(userId: string, deckId: string, csv: string) {
+    await this.assertDeckOwner(userId, deckId);
+
     const rows = parseCsv(csv);
     const [header, ...records] = rows;
 
@@ -96,7 +99,7 @@ export class AdminService {
         continue;
       }
 
-      await this.createCard({
+      await this.createCard(userId, {
         deckId,
         front,
         back,
@@ -109,7 +112,9 @@ export class AdminService {
     return { imported, skipped };
   }
 
-  updateCard(id: string, input: UpdateCardInput) {
+  async updateCard(userId: string, id: string, input: UpdateCardInput) {
+    await this.assertCardOwner(userId, id);
+
     return this.prisma.card.update({
       where: { id },
       data: {
@@ -125,9 +130,25 @@ export class AdminService {
     });
   }
 
-  deleteCard(id: string) {
+  async deleteCard(userId: string, id: string) {
+    await this.assertCardOwner(userId, id);
+
     return this.prisma.card.delete({
       where: { id },
+    });
+  }
+
+  private async assertDeckOwner(userId: string, deckId: string) {
+    await this.prisma.deck.findFirstOrThrow({
+      where: { id: deckId, userId },
+      select: { id: true },
+    });
+  }
+
+  private async assertCardOwner(userId: string, cardId: string) {
+    await this.prisma.card.findFirstOrThrow({
+      where: { id: cardId, deck: { userId } },
+      select: { id: true },
     });
   }
 

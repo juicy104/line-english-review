@@ -38,7 +38,10 @@ PostgreSQLと開発モードのNestJSが起動し、ソースコード変更時�
 ```dotenv
 PORT=3000
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/line_english_app?schema=public
-ADMIN_TOKEN=local-admin
+APP_BASE_URL=http://localhost:3000
+SESSION_SECRET=local-session-secret-change-me
+LINE_LOGIN_CHANNEL_ID=
+LINE_LOGIN_CHANNEL_SECRET=
 LINE_CHANNEL_SECRET=
 LINE_CHANNEL_ACCESS_TOKEN=
 NGROK_AUTHTOKEN=
@@ -46,7 +49,10 @@ NGROK_AUTHTOKEN=
 
 - `PORT`: NestJSの待受ポート
 - `DATABASE_URL`: PostgreSQL接続URL。ローカルではCompose内の `postgres` サービスに接続します
-- `ADMIN_TOKEN`: 管理画面API用トークン
+- `APP_BASE_URL`: LINE Login callbackに使うアプリの公開URL
+- `SESSION_SECRET`: 管理画面ログインCookie署名用の秘密文字列
+- `LINE_LOGIN_CHANNEL_ID`: LINE Login Channel ID
+- `LINE_LOGIN_CHANNEL_SECRET`: LINE Login Channel Secret
 - `LINE_CHANNEL_SECRET`: LINE Webhook署名検証用のChannel Secret
 - `LINE_CHANNEL_ACCESS_TOKEN`: LINE Messaging API用のChannel Access Token
 - `NGROK_AUTHTOKEN`: ローカルWebhook確認用のngrok Authtoken
@@ -95,7 +101,19 @@ https://<ngrokのURL>/line/webhook
 http://localhost:3000/admin
 ```
 
-初回アクセス時に `ADMIN_TOKEN` を入力します。ローカルの初期値は `local-admin` です。Fly.ioにデプロイする場合は、必ず `ADMIN_TOKEN` をsecretに設定してください。
+未ログインの場合はLINE Loginへリダイレクトします。LINE DevelopersのLINE Login Channelに、次のcallback URLを登録してください。
+
+```text
+http://localhost:3000/auth/line/callback
+```
+
+スマホからngrok経由で確認する場合は、`APP_BASE_URL` をngrokのURLに変えて、LINE Developersにも同じcallback URLを追加します。
+
+```text
+https://<ngrokのURL>/auth/line/callback
+```
+
+Fly.ioにデプロイする場合は、必ず `APP_BASE_URL`, `SESSION_SECRET`, `LINE_LOGIN_CHANNEL_ID`, `LINE_LOGIN_CHANNEL_SECRET` をsecretに設定してください。
 
 ## npm scripts
 

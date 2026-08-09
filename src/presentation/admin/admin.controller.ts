@@ -3,22 +3,22 @@ import {
   Controller,
   Delete,
   Get,
-  Headers,
   Param,
   Post,
   Put,
   Query,
-  ServiceUnavailableException,
+  Req,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import type { Request } from 'express';
 import { AdminService } from '../../application/admin/admin.service';
+import { AuthService } from '../../application/auth/auth.service';
 
 @Controller('admin')
 export class AdminController {
   constructor(
     private readonly adminService: AdminService,
-    private readonly configService: ConfigService,
+    private readonly authService: AuthService,
   ) {}
 
   @Get()
@@ -27,41 +27,32 @@ export class AdminController {
   }
 
   @Get('api/users')
-  listUsers(@Headers('x-admin-token') token: string | undefined) {
-    this.assertAdminAccess(token);
-    return this.adminService.listUsers();
+  listUsers(@Req() request: Request) {
+    return this.adminService.listUsers(this.requireUserId(request));
   }
 
   @Get('api/decks')
-  listDecks(
-    @Headers('x-admin-token') token: string | undefined,
-    @Query('userId') userId: string,
-  ) {
-    this.assertAdminAccess(token);
+  listDecks(@Req() request: Request, @Query('userId') userId: string) {
+    this.requireMatchingUser(request, userId);
     return this.adminService.listDecks(userId);
   }
 
   @Post('api/decks')
   createDeck(
-    @Headers('x-admin-token') token: string | undefined,
-    @Body() body: { userId: string; name: string; description?: string },
+    @Req() request: Request,
+    @Body() body: { name: string; description?: string },
   ) {
-    this.assertAdminAccess(token);
-    return this.adminService.createDeck(body);
+    return this.adminService.createDeck(this.requireUserId(request), body);
   }
 
   @Get('api/cards')
-  listCards(
-    @Headers('x-admin-token') token: string | undefined,
-    @Query('deckId') deckId: string,
-  ) {
-    this.assertAdminAccess(token);
-    return this.adminService.listCards(deckId);
+  listCards(@Req() request: Request, @Query('deckId') deckId: string) {
+    return this.adminService.listCards(this.requireUserId(request), deckId);
   }
 
   @Post('api/cards')
   createCard(
-    @Headers('x-admin-token') token: string | undefined,
+    @Req() request: Request,
     @Body()
     body: {
       deckId: string;
@@ -71,52 +62,49 @@ export class AdminController {
       note?: string;
     },
   ) {
-    this.assertAdminAccess(token);
-    return this.adminService.createCard(body);
+    return this.adminService.createCard(this.requireUserId(request), body);
   }
 
   @Post('api/cards/import-csv')
   importCardsFromCsv(
-    @Headers('x-admin-token') token: string | undefined,
+    @Req() request: Request,
     @Body() body: { deckId: string; csv: string },
   ) {
-    this.assertAdminAccess(token);
-    return this.adminService.importCardsFromCsv(body.deckId, body.csv);
+    return this.adminService.importCardsFromCsv(
+      this.requireUserId(request),
+      body.deckId,
+      body.csv,
+    );
   }
 
   @Put('api/cards/:id')
   updateCard(
-    @Headers('x-admin-token') token: string | undefined,
+    @Req() request: Request,
     @Param('id') id: string,
     @Body()
     body: { front?: string; back?: string; example?: string; note?: string },
   ) {
-    this.assertAdminAccess(token);
-    return this.adminService.updateCard(id, body);
+    return this.adminService.updateCard(this.requireUserId(request), id, body);
   }
 
   @Delete('api/cards/:id')
-  deleteCard(
-    @Headers('x-admin-token') token: string | undefined,
-    @Param('id') id: string,
-  ) {
-    this.assertAdminAccess(token);
-    return this.adminService.deleteCard(id);
+  deleteCard(@Req() request: Request, @Param('id') id: string) {
+    return this.adminService.deleteCard(this.requireUserId(request), id);
   }
 
-  private assertAdminAccess(token: string | undefined) {
-    const adminToken = this.configService.get<string>('ADMIN_TOKEN');
-
-    if (!adminToken) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new ServiceUnavailableException('ADMIN_TOKEN is not configured');
-      }
-      return;
+  private requireMatchingUser(request: Request, userId: string) {
+    const sessionUserId = this.requireUserId(request);
+    if (sessionUserId !== userId) {
+      throw new UnauthorizedException('Invalid user');
     }
+  }
 
-    if (token !== adminToken) {
-      throw new UnauthorizedException('Invalid admin token');
+  private requireUserId(request: Request) {
+    const userId = this.authService.getSessionUserId(request);
+    if (!userId) {
+      throw new UnauthorizedException('LINE login is required');
     }
+    return userId;
   }
 }
 
@@ -290,19 +278,15 @@ const adminHtml = `<!doctype html>
     const state = { users: [], decks: [], cards: [] };
     const $ = (id) => document.getElementById(id);
     const status = (message) => { $('status').textContent = message || ''; };
-    const getAdminToken = () => {
-      let token = localStorage.getItem('adminToken') || '';
-      if (!token) {
-        token = prompt('Admin token') || '';
-        if (token) localStorage.setItem('adminToken', token);
-      }
-      return token;
-    };
     const api = async (path, options = {}) => {
       const res = await fetch(path, {
-        headers: { 'Content-Type': 'application/json', 'x-admin-token': getAdminToken(), ...(options.headers || {}) },
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
         ...options,
       });
+      if (res.status === 401) {
+        window.location.href = '/auth/line/start?returnTo=/admin';
+        return;
+      }
       if (!res.ok) throw new Error(await res.text());
       return res.status === 204 ? null : res.json();
     };

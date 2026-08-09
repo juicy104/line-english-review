@@ -38,6 +38,7 @@ PostgreSQLと開発モードのNestJSが起動し、ソースコード変更時�
 ```dotenv
 PORT=3000
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/line_english_app?schema=public
+ADMIN_TOKEN=local-admin
 LINE_CHANNEL_SECRET=
 LINE_CHANNEL_ACCESS_TOKEN=
 NGROK_AUTHTOKEN=
@@ -45,6 +46,7 @@ NGROK_AUTHTOKEN=
 
 - `PORT`: NestJSの待受ポート
 - `DATABASE_URL`: PostgreSQL接続URL。ローカルではCompose内の `postgres` サービスに接続します
+- `ADMIN_TOKEN`: 管理画面API用トークン
 - `LINE_CHANNEL_SECRET`: LINE Webhook署名検証用のChannel Secret
 - `LINE_CHANNEL_ACCESS_TOKEN`: LINE Messaging API用のChannel Access Token
 - `NGROK_AUTHTOKEN`: ローカルWebhook確認用のngrok Authtoken
@@ -84,6 +86,16 @@ ngrokもDocker Composeで一緒に起動します。公開URLは http://localhos
 ```text
 https://<ngrokのURL>/line/webhook
 ```
+
+## Admin
+
+カード管理画面は次のURLで開きます。
+
+```text
+http://localhost:3000/admin
+```
+
+初回アクセス時に `ADMIN_TOKEN` を入力します。ローカルの初期値は `local-admin` です。Fly.ioにデプロイする場合は、必ず `ADMIN_TOKEN` をsecretに設定してください。
 
 ## npm scripts
 

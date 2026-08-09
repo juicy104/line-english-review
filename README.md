@@ -106,7 +106,7 @@ docker compose run --rm app npm run test
 
 ## Prisma
 
-Schemaは `prisma/schema.prisma` にあります。現時点ではmigrationは実行していません。
+Schemaは `prisma/schema.prisma` にあります。
 ローカルのPostgreSQLは `docker compose up` で一緒に起動します。
 
 PrismaコマンドもDocker内で実行します。

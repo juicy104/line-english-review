@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AdminModule } from './modules/admin.module';
 import { AuthModule } from './modules/auth.module';
 import { HealthModule } from './modules/health.module';
+import { InternalModule } from './modules/internal.module';
 import { LineModule } from './modules/line.module';
 import { PrismaModule } from './modules/prisma.module';
 
@@ -17,6 +18,7 @@ import { PrismaModule } from './modules/prisma.module';
     AuthModule,
     AdminModule,
     HealthModule,
+    InternalModule,
     LineModule,
   ],
 })

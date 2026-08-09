@@ -99,8 +99,19 @@ export class AdminService {
   async createCard(userId: string, input: CreateCardInput) {
     await this.assertDeckOwner(userId, input.deckId);
 
-    return this.prisma.card.create({
-      data: this.toCardData(input),
+    return this.prisma.$transaction(async (tx) => {
+      const card = await tx.card.create({
+        data: this.toCardData(input),
+      });
+
+      await tx.cardProgress.create({
+        data: {
+          userId,
+          cardId: card.id,
+        },
+      });
+
+      return card;
     });
   }
 

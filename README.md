@@ -44,6 +44,7 @@ LINE_LOGIN_CHANNEL_ID=
 LINE_LOGIN_CHANNEL_SECRET=
 LINE_MESSAGING_CHANNEL_SECRET=
 LINE_MESSAGING_CHANNEL_ACCESS_TOKEN=
+DELIVERY_SNOOZE_MINUTES=60
 NGROK_AUTHTOKEN=
 ```
 
@@ -55,6 +56,7 @@ NGROK_AUTHTOKEN=
 - `LINE_LOGIN_CHANNEL_SECRET`: LINE Login Channel Secret
 - `LINE_MESSAGING_CHANNEL_SECRET`: LINE Messaging API Channel Secret。Webhook署名検証に使います
 - `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN`: LINE Messaging API Channel Access Token。返信やPush配信に使います
+- `DELIVERY_SNOOZE_MINUTES`: 配信後に同じカードを再配信しないため先送りする分数
 - `NGROK_AUTHTOKEN`: ローカルWebhook確認用のngrok Authtoken
 
 Mac側のDBクライアントから接続する場合は、ホスト名だけ `localhost` に変えて接続します。
@@ -114,6 +116,24 @@ https://<ngrokのURL>/auth/line/callback
 ```
 
 Fly.ioにデプロイする場合は、必ず `APP_BASE_URL`, `SESSION_SECRET`, `LINE_LOGIN_CHANNEL_ID`, `LINE_LOGIN_CHANNEL_SECRET`, `LINE_MESSAGING_CHANNEL_SECRET` をsecretに設定してください。LINEへの返信やPush配信を使う場合は `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN` も設定します。
+
+## Delivery Job
+
+外部cronから次のエンドポイントを叩くと、各LINEユーザーに期限到来カードを最大1件ずつPush配信します。
+
+```bash
+curl -X POST http://localhost:3000/internal/jobs/deliver-due-cards \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+送信せず対象確認だけ行う場合は `dryRun` を指定します。
+
+```bash
+curl -X POST http://localhost:3000/internal/jobs/deliver-due-cards \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true}'
+```
 
 ## npm scripts
 

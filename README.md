@@ -10,7 +10,7 @@ LINE Messaging APIを利用した英語復習サービスのNestJSバックエ�
 - npm
 - Docker / Docker Compose
 - Prisma
-- PostgreSQL（将来的にSupabase PostgreSQL）
+- PostgreSQL
 - Fly.io想定のDockerデプロイ
 
 ## 初回セットアップ
@@ -22,7 +22,8 @@ cp .env.example .env
 docker compose build
 ```
 
-`.env` の値は必要に応じて設定してください。初期状態ではDB接続やLINE Pushはまだ行いません。
+`.env` の値は必要に応じて設定してください。初期状態ではLINE Pushはまだ行いません。
+ローカルDBはDocker ComposeのPostgreSQLを使います。
 
 ## 起動方法
 
@@ -30,23 +31,29 @@ docker compose build
 docker compose up
 ```
 
-開発モードでNestJSが起動し、ソースコード変更時にホットリロードされます。
+PostgreSQLと開発モードのNestJSが起動し、ソースコード変更時にホットリロードされます。
 
 ## 環境変数
 
 ```dotenv
 PORT=3000
-DATABASE_URL=
+DATABASE_URL=postgresql://postgres:postgres@postgres:5432/line_english_app?schema=public
 LINE_CHANNEL_SECRET=
 LINE_CHANNEL_ACCESS_TOKEN=
 NGROK_AUTHTOKEN=
 ```
 
 - `PORT`: NestJSの待受ポート
-- `DATABASE_URL`: Supabase PostgreSQLなどの接続URL
+- `DATABASE_URL`: PostgreSQL接続URL。ローカルではCompose内の `postgres` サービスに接続します
 - `LINE_CHANNEL_SECRET`: LINE Webhook署名検証用のChannel Secret
 - `LINE_CHANNEL_ACCESS_TOKEN`: LINE Messaging API用のChannel Access Token
 - `NGROK_AUTHTOKEN`: ローカルWebhook確認用のngrok Authtoken
+
+Mac側のDBクライアントから接続する場合は、ホスト名だけ `localhost` に変えて接続します。
+
+```text
+postgresql://postgres:postgres@localhost:5432/line_english_app?schema=public
+```
 
 `LINE_CHANNEL_SECRET` が未設定の場合、ローカル疎通用にWebhook署名検証はスキップされます。設定済みの場合は `x-line-signature` を検証します。
 
@@ -106,6 +113,7 @@ docker compose run --rm app npm run test
 ## Prisma
 
 Schemaは `prisma/schema.prisma` にあります。現時点ではmigrationは実行していません。
+ローカルのPostgreSQLは `docker compose up` で一緒に起動します。
 
 PrismaコマンドもDocker内で実行します。
 

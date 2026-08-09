@@ -8,9 +8,10 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { AdminService } from '../../application/admin/admin.service';
 import { AuthService } from '../../application/auth/auth.service';
 
@@ -22,8 +23,13 @@ export class AdminController {
   ) {}
 
   @Get()
-  getAdminPage(): string {
-    return adminHtml;
+  getAdminPage(@Req() request: Request, @Res() response: Response): void {
+    if (!this.authService.getSessionUserId(request)) {
+      response.redirect('/auth/line/start?returnTo=/admin');
+      return;
+    }
+
+    response.type('html').send(adminHtml);
   }
 
   @Get('api/users')
@@ -32,9 +38,18 @@ export class AdminController {
   }
 
   @Get('api/decks')
-  listDecks(@Req() request: Request, @Query('userId') userId: string) {
-    this.requireMatchingUser(request, userId);
-    return this.adminService.listDecks(userId);
+  listDecks(@Req() request: Request, @Query('userId') userId?: string) {
+    if (userId) {
+      this.requireMatchingUser(request, userId);
+    }
+    return this.adminService.listDecks(this.requireUserId(request));
+  }
+
+  @Post('api/decks/default')
+  getOrCreateDefaultDeck(@Req() request: Request) {
+    return this.adminService.getOrCreateDefaultDeck(
+      this.requireUserId(request),
+    );
   }
 
   @Post('api/decks')
@@ -118,7 +133,7 @@ const adminHtml = `<!doctype html>
     :root {
       color-scheme: light;
       --bg: #f6f7f9;
-      --panel: #ffffff;
+      --panel: #fff;
       --ink: #17202a;
       --muted: #667085;
       --line: #d6dbe3;
@@ -134,131 +149,199 @@ const adminHtml = `<!doctype html>
       font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     header {
-      padding: 18px 24px;
-      border-bottom: 1px solid var(--line);
       background: var(--panel);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
+      border-bottom: 1px solid var(--line);
+      padding: 14px 18px 0;
+      position: sticky;
+      top: 0;
+      z-index: 2;
     }
-    h1 { margin: 0; font-size: 20px; }
+    .topbar {
+      align-items: center;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: 19px; margin: 0; }
+    nav { display: flex; gap: 6px; overflow-x: auto; }
+    nav button {
+      background: transparent;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      border-radius: 0;
+      color: var(--muted);
+      padding: 11px 12px;
+    }
+    nav button.active {
+      border-color: var(--accent);
+      color: var(--ink);
+    }
     main {
-      display: grid;
-      grid-template-columns: 280px minmax(0, 1fr);
-      gap: 18px;
+      margin: 0 auto;
+      max-width: 980px;
       padding: 18px;
     }
-    section, aside {
+    section {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
+      padding: 16px;
     }
-    aside { padding: 14px; }
-    section { padding: 16px; }
-    h2 { margin: 0 0 12px; font-size: 16px; }
-    h3 { margin: 0 0 10px; font-size: 14px; }
-    label { display: block; margin: 10px 0 6px; color: var(--muted); font-size: 12px; }
+    section[hidden] { display: none; }
+    h2 { font-size: 17px; margin: 0 0 14px; }
+    h3 { font-size: 14px; margin: 0 0 10px; }
+    label {
+      color: var(--muted);
+      display: block;
+      font-size: 12px;
+      margin: 10px 0 6px;
+    }
     input, select, textarea {
-      width: 100%;
+      background: #fff;
       border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 9px 10px;
       font: inherit;
-      background: #fff;
+      padding: 10px;
+      width: 100%;
     }
-    textarea { min-height: 90px; resize: vertical; }
+    textarea { min-height: 92px; resize: vertical; }
     button {
+      background: var(--accent);
       border: 0;
       border-radius: 6px;
-      padding: 9px 12px;
-      background: var(--accent);
       color: #fff;
-      font-weight: 700;
       cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      padding: 10px 13px;
+      white-space: nowrap;
     }
     button:hover { background: var(--accent-dark); }
     button.secondary { background: #344054; }
     button.danger { background: var(--danger); }
-    button:disabled { background: #98a2b3; cursor: not-allowed; }
-    .stack { display: grid; gap: 12px; }
-    .row { display: flex; gap: 8px; align-items: center; }
-    .row > * { flex: 1; }
-    .toolbar { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
     .muted { color: var(--muted); }
-    .status { min-height: 21px; color: var(--muted); }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid var(--line); padding: 9px 8px; text-align: left; vertical-align: top; }
-    th { color: var(--muted); font-size: 12px; font-weight: 700; }
-    td.actions { width: 150px; }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 16px;
-      margin-bottom: 16px;
+    .status { color: var(--muted); min-height: 21px; text-align: right; }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 12px;
     }
-    @media (max-width: 860px) {
-      main { grid-template-columns: 1fr; }
-      .grid { grid-template-columns: 1fr; }
-      header { align-items: flex-start; flex-direction: column; }
+    .form-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .full { grid-column: 1 / -1; }
+    .deck-row {
+      align-items: center;
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 8px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding: 10px 0;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    td.actions { width: 150px; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    .table-wrap { overflow: auto; }
+    @media (max-width: 760px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .status { text-align: left; }
+      main { padding: 12px; }
+      td.actions { min-width: 150px; }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>LINE English Admin</h1>
-    <div id="status" class="status"></div>
+    <div class="topbar">
+      <h1>LINE English Admin</h1>
+      <div id="status" class="status"></div>
+    </div>
+    <nav aria-label="Admin views">
+      <button class="active" data-view="add" type="button">Add</button>
+      <button data-view="decks" type="button">Decks</button>
+      <button data-view="cards" type="button">Cards</button>
+    </nav>
   </header>
   <main>
-    <aside class="stack">
-      <div>
-        <h2>Context</h2>
-        <label for="userSelect">User</label>
-        <select id="userSelect"></select>
-        <label for="deckSelect">Deck</label>
-        <select id="deckSelect"></select>
-      </div>
-      <form id="deckForm">
-        <h3>New Deck</h3>
-        <label for="deckName">Name</label>
-        <input id="deckName" required placeholder="Default">
-        <label for="deckDescription">Description</label>
-        <textarea id="deckDescription"></textarea>
-        <div class="toolbar">
-          <button type="submit">Create</button>
-        </div>
-      </form>
-    </aside>
-    <section>
-      <div class="grid">
-        <form id="cardForm">
-          <h2>Add Card</h2>
+    <section id="view-add">
+      <h2>Add Cards</h2>
+      <label for="addDeckSelect">Deck</label>
+      <select id="addDeckSelect"></select>
+      <form id="cardForm" class="form-grid">
+        <div>
           <label for="front">Front</label>
           <input id="front" required placeholder="apple">
+        </div>
+        <div>
           <label for="back">Back</label>
           <input id="back" required placeholder="りんご">
+        </div>
+        <div class="full">
           <label for="example">Example</label>
           <textarea id="example"></textarea>
+        </div>
+        <div class="full">
           <label for="note">Note</label>
           <textarea id="note"></textarea>
-          <div class="toolbar">
-            <button type="submit">Add</button>
-          </div>
-        </form>
-        <form id="csvForm">
-          <h2>CSV Import</h2>
-          <p class="muted">Headers: front,back,example,note</p>
-          <label for="csvFile">CSV File</label>
-          <input id="csvFile" type="file" accept=".csv,text/csv">
-          <label for="csvText">CSV Text</label>
-          <textarea id="csvText" placeholder="front,back,example,note&#10;apple,りんご,I ate an apple.,名詞"></textarea>
-          <div class="toolbar">
-            <button type="submit">Import</button>
-          </div>
-        </form>
-      </div>
+        </div>
+        <div class="toolbar full">
+          <button type="submit">Add Card</button>
+        </div>
+      </form>
+      <hr>
+      <form id="csvForm">
+        <h3>CSV Import</h3>
+        <p class="muted">Headers: front,back,example,note</p>
+        <label for="csvFile">CSV File</label>
+        <input id="csvFile" type="file" accept=".csv,text/csv">
+        <label for="csvText">CSV Text</label>
+        <textarea id="csvText" placeholder="front,back,example,note&#10;apple,りんご,I ate an apple.,noun"></textarea>
+        <div class="toolbar">
+          <button type="submit">Import CSV</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="view-decks" hidden>
+      <h2>Decks</h2>
+      <form id="deckForm" class="form-grid">
+        <div>
+          <label for="deckName">Name</label>
+          <input id="deckName" required placeholder="Default">
+        </div>
+        <div>
+          <label for="deckDescription">Description</label>
+          <input id="deckDescription">
+        </div>
+        <div class="toolbar full">
+          <button type="submit">Create Deck</button>
+        </div>
+      </form>
+      <div id="deckList"></div>
+    </section>
+
+    <section id="view-cards" hidden>
       <h2>Cards</h2>
-      <div style="overflow:auto">
+      <label for="cardsDeckSelect">Deck</label>
+      <select id="cardsDeckSelect"></select>
+      <div class="table-wrap">
         <table>
           <thead>
             <tr>
@@ -278,49 +361,57 @@ const adminHtml = `<!doctype html>
     const state = { users: [], decks: [], cards: [] };
     const $ = (id) => document.getElementById(id);
     const status = (message) => { $('status').textContent = message || ''; };
-    const api = async (path, options = {}) => {
+    const selectedAddDeckId = () => $('addDeckSelect').value;
+    const selectedCardsDeckId = () => $('cardsDeckSelect').value;
+
+    async function api(path, options = {}) {
       const res = await fetch(path, {
         headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
         ...options,
       });
       if (res.status === 401) {
-        window.location.href = '/auth/line/start?returnTo=/admin';
-        return;
+        window.location.replace('/auth/line/start?returnTo=/admin');
+        return undefined;
       }
       if (!res.ok) throw new Error(await res.text());
       return res.status === 204 ? null : res.json();
-    };
-    const selectedUserId = () => $('userSelect').value;
-    const selectedDeckId = () => $('deckSelect').value;
-
-    async function loadUsers() {
-      state.users = await api('/admin/api/users');
-      $('userSelect').innerHTML = state.users.map((user) => {
-        const line = user.authAccounts.find((account) => account.provider === 'LINE');
-        const label = user.displayName || line?.providerUserId || user.id;
-        return '<option value="' + user.id + '">' + escapeHtml(label) + '</option>';
-      }).join('');
-      if (!state.users.length) {
-        $('userSelect').innerHTML = '<option value="">No users yet</option>';
-      }
-      await loadDecks();
     }
 
-    async function loadDecks() {
-      const userId = selectedUserId();
-      state.decks = userId ? await api('/admin/api/decks?userId=' + encodeURIComponent(userId)) : [];
-      $('deckSelect').innerHTML = state.decks.map((deck) => {
+    async function boot() {
+      status('Loading...');
+      state.users = await api('/admin/api/users');
+      await loadDecks({ ensureDefault: true });
+      renderDecks();
+      await loadCards();
+      status('');
+    }
+
+    async function loadDecks({ ensureDefault = false } = {}) {
+      state.decks = await api('/admin/api/decks') || [];
+      if (!state.decks.length && ensureDefault) {
+        await api('/admin/api/decks/default', { method: 'POST' });
+        state.decks = await api('/admin/api/decks') || [];
+      }
+      renderDeckSelects();
+    }
+
+    function renderDeckSelects() {
+      const options = state.decks.map((deck) => {
         return '<option value="' + deck.id + '">' + escapeHtml(deck.name) + ' (' + deck._count.cards + ')</option>';
       }).join('');
-      if (!state.decks.length) {
-        $('deckSelect').innerHTML = '<option value="">No decks yet</option>';
-      }
-      await loadCards();
+      $('addDeckSelect').innerHTML = options;
+      $('cardsDeckSelect').innerHTML = options;
+    }
+
+    function renderDecks() {
+      $('deckList').innerHTML = state.decks.map((deck) => {
+        return '<div class="deck-row"><div><strong>' + escapeHtml(deck.name) + '</strong><div class="muted">' + (deck._count.cards || 0) + ' cards' + (deck.description ? ' · ' + escapeHtml(deck.description) : '') + '</div></div></div>';
+      }).join('') || '<p class="muted">No decks</p>';
     }
 
     async function loadCards() {
-      const deckId = selectedDeckId();
-      state.cards = deckId ? await api('/admin/api/cards?deckId=' + encodeURIComponent(deckId)) : [];
+      const deckId = selectedCardsDeckId() || selectedAddDeckId();
+      state.cards = deckId ? await api('/admin/api/cards?deckId=' + encodeURIComponent(deckId)) || [] : [];
       $('cardsBody').innerHTML = state.cards.map(renderCardRow).join('') || '<tr><td colspan="5" class="muted">No cards</td></tr>';
     }
 
@@ -334,34 +425,42 @@ const adminHtml = `<!doctype html>
       '</tr>';
     }
 
-    $('userSelect').addEventListener('change', loadDecks);
-    $('deckSelect').addEventListener('change', loadCards);
+    document.querySelectorAll('nav button').forEach((button) => {
+      button.addEventListener('click', async () => {
+        document.querySelectorAll('nav button').forEach((item) => item.classList.toggle('active', item === button));
+        document.querySelectorAll('main section').forEach((section) => section.hidden = section.id !== 'view-' + button.dataset.view);
+        if (button.dataset.view === 'cards') await loadCards();
+      });
+    });
+
+    $('addDeckSelect').addEventListener('change', () => {
+      $('cardsDeckSelect').value = selectedAddDeckId();
+    });
+    $('cardsDeckSelect').addEventListener('change', loadCards);
 
     $('deckForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (!selectedUserId()) return;
       status('Creating deck...');
       await api('/admin/api/decks', {
         method: 'POST',
         body: JSON.stringify({
-          userId: selectedUserId(),
           name: $('deckName').value,
           description: $('deckDescription').value,
         }),
       });
       event.target.reset();
       await loadDecks();
+      renderDecks();
       status('Deck created');
     });
 
     $('cardForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (!selectedDeckId()) return;
       status('Adding card...');
       await api('/admin/api/cards', {
         method: 'POST',
         body: JSON.stringify({
-          deckId: selectedDeckId(),
+          deckId: selectedAddDeckId(),
           front: $('front').value,
           back: $('back').value,
           example: $('example').value,
@@ -369,7 +468,7 @@ const adminHtml = `<!doctype html>
         }),
       });
       event.target.reset();
-      await loadCards();
+      await loadDecks();
       status('Card added');
     });
 
@@ -380,13 +479,13 @@ const adminHtml = `<!doctype html>
 
     $('csvForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (!selectedDeckId()) return;
       status('Importing CSV...');
       const result = await api('/admin/api/cards/import-csv', {
         method: 'POST',
-        body: JSON.stringify({ deckId: selectedDeckId(), csv: $('csvText').value }),
+        body: JSON.stringify({ deckId: selectedAddDeckId(), csv: $('csvText').value }),
       });
-      await loadCards();
+      await loadDecks();
+      renderDecks();
       status('Imported ' + result.imported + ', skipped ' + result.skipped);
     });
 
@@ -400,6 +499,7 @@ const adminHtml = `<!doctype html>
         status('Deleting card...');
         await api('/admin/api/cards/' + id, { method: 'DELETE' });
         await loadCards();
+        await loadDecks();
         status('Card deleted');
         return;
       }
@@ -421,7 +521,7 @@ const adminHtml = `<!doctype html>
       return escapeHtml(value).replace(/\\n/g, '&#10;');
     }
 
-    loadUsers().catch((error) => status(error.message));
+    boot().catch((error) => status(error.message));
   </script>
 </body>
 </html>`;

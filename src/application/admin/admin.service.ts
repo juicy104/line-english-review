@@ -51,6 +51,34 @@ export class AdminService {
     });
   }
 
+  async getOrCreateDefaultDeck(userId: string) {
+    const existing = await this.prisma.deck.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        _count: {
+          select: { cards: true },
+        },
+      },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.deck.create({
+      data: {
+        userId,
+        name: 'Default',
+      },
+      include: {
+        _count: {
+          select: { cards: true },
+        },
+      },
+    });
+  }
+
   createDeck(userId: string, input: CreateDeckInput) {
     return this.prisma.deck.create({
       data: {

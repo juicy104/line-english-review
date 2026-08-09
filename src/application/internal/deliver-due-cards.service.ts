@@ -49,9 +49,12 @@ export class DeliverDueCardsService {
 
       try {
         if (!input.dryRun) {
-          await this.lineMessagingClient.pushText(
+          await this.lineMessagingClient.pushReviewCard(
             account.providerUserId,
-            formatReviewMessage(progress.card),
+            {
+              progressId: progress.id,
+              front: progress.card.front,
+            },
           );
 
           await this.prisma.cardProgress.update({
@@ -131,8 +134,4 @@ export class DeliverDueCardsService {
       include: { card: true },
     });
   }
-}
-
-function formatReviewMessage(card: { front: string }) {
-  return `復習: ${card.front}`;
 }

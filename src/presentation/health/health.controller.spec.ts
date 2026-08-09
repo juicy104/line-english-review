@@ -6,4 +6,10 @@ describe('HealthController', () => {
 
     expect(controller.getHealth()).toEqual({ status: 'ok' });
   });
+
+  it('returns ok status for root health', () => {
+    const controller = new HealthController();
+
+    expect(controller.getRootHealth()).toEqual({ status: 'ok' });
+  });
 });

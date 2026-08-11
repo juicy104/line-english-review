@@ -75,7 +75,8 @@ export class HandleLineWebhookUseCase {
     }
 
     const data = new URLSearchParams(event.postback?.data ?? '');
-    if (data.get('action') !== 'show_answer') {
+    const action = data.get('action');
+    if (action !== 'show_answer' && action !== 'record_review') {
       return;
     }
 
@@ -108,6 +109,15 @@ export class HandleLineWebhookUseCase {
       return;
     }
 
+    if (action === 'record_review') {
+      await this.recordReviewResult(
+        event.replyToken,
+        progress.id,
+        data.get('grade'),
+      );
+      return;
+    }
+
     await this.prisma.cardProgress.update({
       where: { id: progress.id },
       data: {
@@ -116,24 +126,62 @@ export class HandleLineWebhookUseCase {
       },
     });
 
-    await this.lineMessagingClient.replyText(
-      event.replyToken,
-      formatAnswerMessage(progress.card),
-    );
+    await this.lineMessagingClient.replyAnswerCard(event.replyToken, {
+      progressId: progress.id,
+      front: progress.card.front,
+      back: progress.card.back,
+      example: progress.card.example,
+      note: progress.card.note,
+    });
+  }
+
+  private async recordReviewResult(
+    replyToken: string,
+    progressId: string,
+    grade: string | null,
+  ) {
+    const now = new Date();
+    const schedule = toReviewSchedule(grade, now);
+
+    await this.prisma.cardProgress.update({
+      where: { id: progressId },
+      data: {
+        status: CardProgressStatus.QUEUED,
+        dueAt: schedule.dueAt,
+        intervalDays: schedule.intervalDays,
+        lastReviewedAt: now,
+        reviewCount: { increment: 1 },
+      },
+    });
+
+    await this.lineMessagingClient.replyText(replyToken, schedule.message);
   }
 }
 
-function formatAnswerMessage(card: {
-  front: string;
-  back: string;
-  example: string | null;
-  note: string | null;
-}) {
-  return [
-    `答え: ${card.back}`,
-    card.example ? `例文: ${card.example}` : undefined,
-    card.note ? `メモ: ${card.note}` : undefined,
-  ]
-    .filter(Boolean)
-    .join('\n');
+function toReviewSchedule(grade: string | null, now: Date) {
+  if (grade === 'perfect') {
+    return {
+      dueAt: addDays(now, 3),
+      intervalDays: 3,
+      message: '次は3日後に出します。',
+    };
+  }
+
+  if (grade === 'good') {
+    return {
+      dueAt: addDays(now, 1),
+      intervalDays: 1,
+      message: '次は明日に出します。',
+    };
+  }
+
+  return {
+    dueAt: new Date(now.getTime() + 10 * 60 * 1000),
+    intervalDays: 0,
+    message: 'もう一回、少し後に出します。',
+  };
+}
+
+function addDays(date: Date, days: number) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }

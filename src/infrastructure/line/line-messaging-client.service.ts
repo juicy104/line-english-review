@@ -32,10 +32,26 @@ export class LineMessagingClientService {
   }
 
   async replyText(replyToken: string, text: string): Promise<void> {
-    await this.sendLineRequest('https://api.line.me/v2/bot/message/reply', {
-      replyToken,
-      messages: [{ type: 'text', text }],
-    });
+    await this.replyMessages(replyToken, [{ type: 'text', text }]);
+  }
+
+  async replyAnswerCard(
+    replyToken: string,
+    card: {
+      progressId: string;
+      front: string;
+      back: string;
+      example: string | null;
+      note: string | null;
+    },
+  ): Promise<void> {
+    await this.replyMessages(replyToken, [
+      {
+        type: 'flex',
+        altText: `答え: ${card.back}`,
+        contents: buildAnswerCardBubble(card),
+      },
+    ]);
   }
 
   private async pushMessages(
@@ -44,6 +60,16 @@ export class LineMessagingClientService {
   ): Promise<void> {
     await this.sendLineRequest('https://api.line.me/v2/bot/message/push', {
       to,
+      messages,
+    });
+  }
+
+  private async replyMessages(
+    replyToken: string,
+    messages: LineMessage[],
+  ): Promise<void> {
+    await this.sendLineRequest('https://api.line.me/v2/bot/message/reply', {
+      replyToken,
       messages,
     });
   }
@@ -119,6 +145,114 @@ function buildReviewCardBubble(card: { progressId: string; front: string }) {
           },
         },
       ],
+    },
+  };
+}
+
+function buildAnswerCardBubble(card: {
+  progressId: string;
+  front: string;
+  back: string;
+  example: string | null;
+  note: string | null;
+}) {
+  return {
+    type: 'bubble',
+    size: 'mega',
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        {
+          type: 'text',
+          text: '答え',
+          size: 'sm',
+          color: '#6b7280',
+          weight: 'bold',
+        },
+        {
+          type: 'text',
+          text: card.back,
+          size: 'xxl',
+          weight: 'bold',
+          wrap: true,
+          color: '#111827',
+        },
+        {
+          type: 'separator',
+          margin: 'lg',
+        },
+        {
+          type: 'box',
+          layout: 'vertical',
+          spacing: 'sm',
+          margin: 'lg',
+          contents: [
+            buildTextBlock('表', card.front),
+            card.example ? buildTextBlock('例文', card.example) : undefined,
+            card.note ? buildTextBlock('メモ', card.note) : undefined,
+          ].filter(Boolean),
+        },
+      ],
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [
+        buildReviewResultButton(card.progressId, '完璧', 'perfect', '#16a34a'),
+        buildReviewResultButton(card.progressId, 'まあまあ', 'good', '#2563eb'),
+        buildReviewResultButton(
+          card.progressId,
+          'もう一回',
+          'again',
+          '#dc2626',
+        ),
+      ],
+    },
+  };
+}
+
+function buildTextBlock(label: string, text: string) {
+  return {
+    type: 'box',
+    layout: 'vertical',
+    spacing: 'xs',
+    contents: [
+      {
+        type: 'text',
+        text: label,
+        size: 'xs',
+        color: '#6b7280',
+        weight: 'bold',
+      },
+      {
+        type: 'text',
+        text,
+        size: 'sm',
+        color: '#374151',
+        wrap: true,
+      },
+    ],
+  };
+}
+
+function buildReviewResultButton(
+  progressId: string,
+  label: string,
+  grade: string,
+  color: string,
+) {
+  return {
+    type: 'button',
+    style: 'primary',
+    color,
+    action: {
+      type: 'postback',
+      label,
+      data: `action=record_review&progressId=${progressId}&grade=${grade}`,
+      displayText: label,
     },
   };
 }

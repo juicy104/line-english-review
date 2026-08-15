@@ -1,0 +1,19 @@
+name: Deliver due cards
+
+on:
+  schedule:
+    # UTC: 00,03,06,09,12,15 => JST: 09,12,15,18,21,00
+    - cron: '0 0,3,6,9,12,15 * * *'
+  workflow_dispatch:
+
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call delivery endpoint
+        run: |
+          curl -fsS -X POST "$DELIVERY_URL" \
+            -H 'Content-Type: application/json' \
+            -d '{}'
+        env:
+          DELIVERY_URL: ${{ secrets.DELIVERY_URL }}

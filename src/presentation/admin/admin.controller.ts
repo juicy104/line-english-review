@@ -209,20 +209,40 @@ const adminHtml = `<!doctype html>
     }
     textarea { min-height: 92px; resize: vertical; }
     button {
+      align-items: center;
       background: var(--accent);
       border: 0;
       border-radius: 6px;
       color: #fff;
       cursor: pointer;
+      display: inline-flex;
       font: inherit;
       font-weight: 700;
+      gap: 8px;
+      justify-content: center;
       min-height: 44px;
       padding: 10px 13px;
       white-space: nowrap;
     }
     button:hover { background: var(--accent-dark); }
+    button:disabled {
+      cursor: wait;
+      opacity: 0.72;
+    }
     button.secondary { background: #344054; }
     button.danger { background: var(--danger); }
+    .spinner {
+      animation: spin 0.75s linear infinite;
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      border-top-color: #fff;
+      border-radius: 999px;
+      display: inline-block;
+      height: 16px;
+      width: 16px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
     .muted { color: var(--muted); }
     .status { color: var(--muted); min-height: 21px; text-align: right; }
     .toolbar {
@@ -370,7 +390,7 @@ const adminHtml = `<!doctype html>
       <hr>
       <form id="csvForm">
         <h3>CSV Import</h3>
-        <p class="muted">Headers: front,back,example,note</p>
+        <p class="muted">Headers optional: front,back,example,note</p>
         <label for="csvFile">CSV File</label>
         <input id="csvFile" type="file" accept=".csv,text/csv">
         <label for="csvText">CSV Text</label>
@@ -439,6 +459,24 @@ const adminHtml = `<!doctype html>
       return res.status === 204 ? null : res.json();
     }
 
+    async function withLoading(target, message, action) {
+      const button = target instanceof HTMLButtonElement ? target : target.querySelector('button[type="submit"]');
+      const originalHtml = button?.innerHTML;
+      if (button) {
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>' + escapeHtml(message) + '</span>';
+      }
+      status(message + '...');
+      try {
+        return await action();
+      } finally {
+        if (button) {
+          button.disabled = false;
+          button.innerHTML = originalHtml;
+        }
+      }
+    }
+
     async function boot() {
       status('Loading...');
       state.users = await api('/admin/api/users');
@@ -502,35 +540,37 @@ const adminHtml = `<!doctype html>
 
     $('deckForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      status('Creating deck...');
-      await api('/admin/api/decks', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: $('deckName').value,
-          description: $('deckDescription').value,
-        }),
+      await withLoading(event.target, 'Creating deck', async () => {
+        await api('/admin/api/decks', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: $('deckName').value,
+            description: $('deckDescription').value,
+          }),
+        });
+        event.target.reset();
+        await loadDecks();
+        renderDecks();
       });
-      event.target.reset();
-      await loadDecks();
-      renderDecks();
       status('Deck created');
     });
 
     $('cardForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      status('Adding card...');
-      await api('/admin/api/cards', {
-        method: 'POST',
-        body: JSON.stringify({
-          deckId: selectedAddDeckId(),
-          front: $('front').value,
-          back: $('back').value,
-          example: $('example').value,
-          note: $('note').value,
-        }),
+      await withLoading(event.target, 'Adding card', async () => {
+        await api('/admin/api/cards', {
+          method: 'POST',
+          body: JSON.stringify({
+            deckId: selectedAddDeckId(),
+            front: $('front').value,
+            back: $('back').value,
+            example: $('example').value,
+            note: $('note').value,
+          }),
+        });
+        event.target.reset();
+        await loadDecks();
       });
-      event.target.reset();
-      await loadDecks();
       status('Card added');
     });
 
@@ -541,13 +581,15 @@ const adminHtml = `<!doctype html>
 
     $('csvForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      status('Importing CSV...');
-      const result = await api('/admin/api/cards/import-csv', {
-        method: 'POST',
-        body: JSON.stringify({ deckId: selectedAddDeckId(), csv: $('csvText').value }),
+      const result = await withLoading(event.target, 'Importing CSV', async () => {
+        const imported = await api('/admin/api/cards/import-csv', {
+          method: 'POST',
+          body: JSON.stringify({ deckId: selectedAddDeckId(), csv: $('csvText').value }),
+        });
+        await loadDecks();
+        renderDecks();
+        return imported;
       });
-      await loadDecks();
-      renderDecks();
       status('Imported ' + result.imported + ', skipped ' + result.skipped);
     });
 
@@ -558,18 +600,20 @@ const adminHtml = `<!doctype html>
       const id = row.dataset.cardId;
       if (button.dataset.action === 'delete') {
         if (!confirm('Delete this card?')) return;
-        status('Deleting card...');
-        await api('/admin/api/cards/' + id, { method: 'DELETE' });
-        await loadCards();
-        await loadDecks();
+        await withLoading(button, 'Deleting', async () => {
+          await api('/admin/api/cards/' + id, { method: 'DELETE' });
+          await loadCards();
+          await loadDecks();
+        });
         status('Card deleted');
         return;
       }
-      status('Saving card...');
-      const data = {};
-      row.querySelectorAll('[data-field]').forEach((input) => { data[input.dataset.field] = input.value; });
-      await api('/admin/api/cards/' + id, { method: 'PUT', body: JSON.stringify(data) });
-      await loadCards();
+      await withLoading(button, 'Saving', async () => {
+        const data = {};
+        row.querySelectorAll('[data-field]').forEach((input) => { data[input.dataset.field] = input.value; });
+        await api('/admin/api/cards/' + id, { method: 'PUT', body: JSON.stringify(data) });
+        await loadCards();
+      });
       status('Card saved');
     });
 

@@ -118,14 +118,13 @@ export class AdminService {
   async importCardsFromCsv(userId: string, deckId: string, csv: string) {
     await this.assertDeckOwner(userId, deckId);
 
-    const rows = parseCsv(csv);
-    const [header, ...records] = rows;
+    const rows = parseCsv(csv).filter((row) => !isAnkiMetadataRow(row));
 
-    if (!header) {
+    if (!rows.length) {
       return { imported: 0, skipped: 0 };
     }
 
-    const indexes = toHeaderIndexes(header);
+    const { indexes, records } = toCsvRecords(rows);
     let imported = 0;
     let skipped = 0;
 
@@ -217,6 +216,29 @@ function findHeader(header: string[], candidates: string[]) {
   return candidates
     .map((candidate) => header.indexOf(candidate))
     .find((i) => i >= 0);
+}
+
+function toCsvRecords(rows: string[][]) {
+  const [firstRow, ...rest] = rows;
+  const indexes = toHeaderIndexes(firstRow);
+
+  if (indexes.front !== undefined && indexes.back !== undefined) {
+    return { indexes, records: rest };
+  }
+
+  return {
+    indexes: {
+      front: 0,
+      back: 1,
+      example: 2,
+      note: 3,
+    },
+    records: rows,
+  };
+}
+
+function isAnkiMetadataRow(row: string[]) {
+  return row.length === 1 && row[0].trim().startsWith('#');
 }
 
 function readCell(record: string[], index: number | undefined) {

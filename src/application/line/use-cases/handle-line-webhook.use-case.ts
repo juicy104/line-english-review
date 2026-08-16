@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AuthProvider, CardProgressStatus } from '@prisma/client';
 import { LineMessagingClientService } from '../../../infrastructure/line/line-messaging-client.service';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+import { MASTERED_INTERVAL_DAYS } from '../review-schedule.constants';
 import { LineWebhookPayloadDto } from '../dto/line-webhook-payload.dto';
 
 @Injectable()
@@ -161,24 +162,24 @@ export class HandleLineWebhookUseCase {
 function toReviewSchedule(grade: string | null, now: Date) {
   if (grade === 'perfect') {
     return {
+      dueAt: now,
+      intervalDays: MASTERED_INTERVAL_DAYS,
+      message: '完璧です。他のカードを優先します。',
+    };
+  }
+
+  if (grade === 'good') {
+    return {
       dueAt: addDays(now, 3),
       intervalDays: 3,
       message: '次は3日後に出します。',
     };
   }
 
-  if (grade === 'good') {
-    return {
-      dueAt: addDays(now, 1),
-      intervalDays: 1,
-      message: '次は明日に出します。',
-    };
-  }
-
   return {
-    dueAt: new Date(now.getTime() + 10 * 60 * 1000),
-    intervalDays: 0,
-    message: 'もう一回、少し後に出します。',
+    dueAt: addDays(now, 1),
+    intervalDays: 1,
+    message: '次は明日に出します。',
   };
 }
 

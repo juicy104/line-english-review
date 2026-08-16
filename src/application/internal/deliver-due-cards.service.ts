@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthProvider, CardProgressStatus } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { LineMessagingClientService } from '../../infrastructure/line/line-messaging-client.service';
+import { MASTERED_INTERVAL_DAYS } from '../line/review-schedule.constants';
 
 type DeliverDueCardsInput = {
   dryRun?: boolean;
@@ -101,6 +102,7 @@ export class DeliverDueCardsService {
         userId,
         status: CardProgressStatus.QUEUED,
         dueAt: { lte: now },
+        intervalDays: { not: MASTERED_INTERVAL_DAYS },
       },
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
       include: { card: true },
@@ -121,7 +123,16 @@ export class DeliverDueCardsService {
     });
 
     if (!cardWithoutProgress) {
-      return undefined;
+      return this.prisma.cardProgress.findFirst({
+        where: {
+          userId,
+          status: CardProgressStatus.QUEUED,
+          dueAt: { lte: now },
+          intervalDays: MASTERED_INTERVAL_DAYS,
+        },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        include: { card: true },
+      });
     }
 
     return this.prisma.cardProgress.create({

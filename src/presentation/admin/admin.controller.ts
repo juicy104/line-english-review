@@ -245,6 +245,16 @@ const adminHtml = `<!doctype html>
     }
     .muted { color: var(--muted); }
     .status { color: var(--muted); min-height: 21px; text-align: right; }
+    .status.busy {
+      align-items: center;
+      display: inline-flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .status .spinner {
+      border-color: rgba(102, 112, 133, 0.28);
+      border-top-color: var(--accent-dark);
+    }
     .toolbar {
       display: flex;
       gap: 8px;
@@ -442,7 +452,13 @@ const adminHtml = `<!doctype html>
   <script>
     const state = { users: [], decks: [], cards: [] };
     const $ = (id) => document.getElementById(id);
-    const status = (message) => { $('status').textContent = message || ''; };
+    const status = (message, busy = false) => {
+      const element = $('status');
+      element.classList.toggle('busy', busy);
+      element.innerHTML = message
+        ? (busy ? '<span class="spinner" aria-hidden="true"></span>' : '') + '<span>' + escapeHtml(message) + '</span>'
+        : '';
+    };
     const selectedAddDeckId = () => $('addDeckSelect').value;
     const selectedCardsDeckId = () => $('cardsDeckSelect').value;
 
@@ -460,20 +476,27 @@ const adminHtml = `<!doctype html>
     }
 
     async function withLoading(target, message, action) {
-      const button = target instanceof HTMLButtonElement ? target : target.querySelector('button[type="submit"]');
+      const button = target instanceof HTMLButtonElement ? target : target?.querySelector('button[type="submit"]');
       const originalHtml = button?.innerHTML;
+      const controls = target instanceof HTMLFormElement
+        ? Array.from(target.querySelectorAll('input, select, textarea, button'))
+        : [];
+      const originallyDisabled = new Map(controls.map((control) => [control, control.disabled]));
       if (button) {
         button.disabled = true;
         button.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>' + escapeHtml(message) + '</span>';
       }
-      status(message + '...');
+      controls.forEach((control) => { control.disabled = true; });
+      status(message + '...', true);
       try {
         return await action();
       } finally {
+        controls.forEach((control) => { control.disabled = originallyDisabled.get(control); });
         if (button) {
-          button.disabled = false;
+          if (!controls.length) button.disabled = false;
           button.innerHTML = originalHtml;
         }
+        $('status').classList.remove('busy');
       }
     }
 
@@ -489,7 +512,7 @@ const adminHtml = `<!doctype html>
     async function loadDecks({ ensureDefault = false } = {}) {
       state.decks = await api('/admin/api/decks') || [];
       if (!state.decks.length && ensureDefault) {
-        await api('/admin/api/decks/default', { method: 'POST' });
+        await withLoading(null, 'Preparing deck', () => api('/admin/api/decks/default', { method: 'POST' }));
         state.decks = await api('/admin/api/decks') || [];
       }
       renderDeckSelects();

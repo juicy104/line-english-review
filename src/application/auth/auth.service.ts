@@ -21,6 +21,13 @@ export class AuthService {
     private readonly prisma: PrismaService,
   ) {}
 
+  createAdminLoginStartUrl(returnTo = '/admin') {
+    const baseUrl = this.requiredConfig('APP_BASE_URL');
+    const startUrl = new URL('/auth/line/start', baseUrl);
+    startUrl.searchParams.set('returnTo', returnTo);
+    return startUrl.toString();
+  }
+
   createLineLoginUrl(response: Response, returnTo = '/admin') {
     const channelId = this.requiredConfig('LINE_LOGIN_CHANNEL_ID');
     const baseUrl = this.requiredConfig('APP_BASE_URL');

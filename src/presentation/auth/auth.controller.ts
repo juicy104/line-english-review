@@ -17,6 +17,23 @@ export class AuthController {
     };
   }
 
+  @Get('admin-login-url')
+  getAdminLoginUrl() {
+    return {
+      url: this.authService.createAdminLoginStartUrl('/admin'),
+    };
+  }
+
+  @Get('line/login-url')
+  getLineLoginUrl(
+    @Res({ passthrough: true }) response: Response,
+    @Query('returnTo') returnTo?: string,
+  ) {
+    return {
+      url: this.authService.createLineLoginUrl(response, returnTo || '/admin'),
+    };
+  }
+
   @Get('line/callback')
   @Redirect()
   async completeLineLogin(

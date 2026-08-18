@@ -135,6 +135,24 @@ curl -X POST http://localhost:3000/internal/jobs/deliver-due-cards \
   -d '{"dryRun":true}'
 ```
 
+cron以外から手動で同じリッチメッセージ配信を発火する場合は、次のエンドポイントも使えます。`garagara-pon` は同じ処理への別名です。
+
+```bash
+curl -X POST http://localhost:3000/internal/rich-messages/deliver-due-cards \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+
+curl -X POST http://localhost:3000/internal/rich-messages/garagara-pon \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true}'
+```
+
+PCログイン用に管理画面ログインURLだけをJSONで取得する場合は、次のエンドポイントを使います。返却されたURLをPCブラウザで開くと、そのブラウザでLINE Loginのstate Cookieを発行してからLINE Loginへ進みます。
+
+```bash
+curl http://localhost:3000/auth/admin-login-url
+```
+
 ## npm scripts
 
 すべてDocker / Docker Compose経由で実行します。

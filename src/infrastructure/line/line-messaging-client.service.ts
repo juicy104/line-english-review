@@ -35,6 +35,19 @@ export class LineMessagingClientService {
     await this.replyMessages(replyToken, [{ type: 'text', text }]);
   }
 
+  async replyReviewCard(
+    replyToken: string,
+    card: { progressId: string; front: string },
+  ): Promise<void> {
+    await this.replyMessages(replyToken, [
+      {
+        type: 'flex',
+        altText: `復習: ${card.front}`,
+        contents: buildReviewCardBubble(card),
+      },
+    ]);
+  }
+
   async replyAnswerCard(
     replyToken: string,
     card: {

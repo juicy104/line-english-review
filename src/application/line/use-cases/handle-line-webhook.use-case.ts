@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AuthProvider, CardProgressStatus } from '@prisma/client';
 import { LineMessagingClientService } from '../../../infrastructure/line/line-messaging-client.service';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
@@ -10,6 +11,7 @@ export class HandleLineWebhookUseCase {
   private readonly logger = new Logger(HandleLineWebhookUseCase.name);
 
   constructor(
+    private readonly configService: ConfigService,
     private readonly lineMessagingClient: LineMessagingClientService,
     private readonly prisma: PrismaService,
   ) {}
@@ -61,8 +63,40 @@ export class HandleLineWebhookUseCase {
     );
 
     await Promise.all(
-      (payload.events ?? []).map((event) => this.handlePostback(event)),
+      (payload.events ?? []).map((event) => this.handleEvent(event)),
     );
+  }
+
+  private async handleEvent(event: {
+    type: string;
+    replyToken?: string;
+    source?: { userId?: string };
+    message?: { type?: string; text?: string };
+    postback?: { data?: string };
+  }) {
+    if (event.type === 'message') {
+      await this.handleMessage(event);
+      return;
+    }
+
+    await this.handlePostback(event);
+  }
+
+  private async handleMessage(event: {
+    type: string;
+    replyToken?: string;
+    source?: { userId?: string };
+    message?: { type?: string; text?: string };
+  }) {
+    if (
+      event.message?.type !== 'text' ||
+      event.message.text?.trim() !== '復習する' ||
+      !event.replyToken
+    ) {
+      return;
+    }
+
+    await this.replyNextReviewCard(event.replyToken, event.source?.userId);
   }
 
   private async handlePostback(event: {
@@ -77,6 +111,11 @@ export class HandleLineWebhookUseCase {
 
     const data = new URLSearchParams(event.postback?.data ?? '');
     const action = data.get('action');
+    if (action === 'request_review') {
+      await this.replyNextReviewCard(event.replyToken, event.source?.userId);
+      return;
+    }
+
     if (action !== 'show_answer' && action !== 'record_review') {
       return;
     }
@@ -133,6 +172,112 @@ export class HandleLineWebhookUseCase {
       back: progress.card.back,
       example: progress.card.example,
       note: progress.card.note,
+    });
+  }
+
+  private async replyNextReviewCard(
+    replyToken: string,
+    lineUserId: string | undefined,
+  ) {
+    if (!lineUserId) {
+      return;
+    }
+
+    const account = await this.prisma.authAccount.findUnique({
+      where: {
+        provider_providerUserId: {
+          provider: AuthProvider.LINE,
+          providerUserId: lineUserId,
+        },
+      },
+    });
+
+    if (!account) {
+      await this.lineMessagingClient.replyText(
+        replyToken,
+        'LINEユーザーを確認できませんでした。もう一度試してください。',
+      );
+      return;
+    }
+
+    const now = new Date();
+    const progress = await this.findOrCreateDueProgress(account.userId, now);
+    if (!progress) {
+      await this.lineMessagingClient.replyText(
+        replyToken,
+        '今は復習するカードがありません。',
+      );
+      return;
+    }
+
+    const snoozeMinutes = Number(
+      this.configService.get<string>('DELIVERY_SNOOZE_MINUTES') ?? 60,
+    );
+    const nextDueAt = new Date(now.getTime() + snoozeMinutes * 60 * 1000);
+
+    await this.prisma.cardProgress.update({
+      where: { id: progress.id },
+      data: {
+        status: CardProgressStatus.ASKED,
+        askedAt: now,
+        answeredAt: null,
+        dueAt: nextDueAt,
+      },
+    });
+
+    await this.lineMessagingClient.replyReviewCard(replyToken, {
+      progressId: progress.id,
+      front: progress.card.front,
+    });
+  }
+
+  private async findOrCreateDueProgress(userId: string, now: Date) {
+    const progress = await this.prisma.cardProgress.findFirst({
+      where: {
+        userId,
+        status: CardProgressStatus.QUEUED,
+        dueAt: { lte: now },
+        intervalDays: { not: MASTERED_INTERVAL_DAYS },
+      },
+      orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+      include: { card: true },
+    });
+
+    if (progress) {
+      return progress;
+    }
+
+    const cardWithoutProgress = await this.prisma.card.findFirst({
+      where: {
+        deck: { userId },
+        progress: {
+          none: { userId },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (!cardWithoutProgress) {
+      return this.prisma.cardProgress.findFirst({
+        where: {
+          userId,
+          status: CardProgressStatus.QUEUED,
+          dueAt: { lte: now },
+          intervalDays: MASTERED_INTERVAL_DAYS,
+        },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        include: { card: true },
+      });
+    }
+
+    return this.prisma.cardProgress.create({
+      data: {
+        userId,
+        cardId: cardWithoutProgress.id,
+        status: CardProgressStatus.QUEUED,
+        dueAt: now,
+      },
+      include: { card: true },
     });
   }
 

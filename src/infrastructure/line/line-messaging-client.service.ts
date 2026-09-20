@@ -1,5 +1,6 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { INTERRUPTED_REVIEW_EXPIRATION_MS } from '../../application/line/review-schedule.constants';
 
 type LineTextMessage = {
   type: 'text';
@@ -116,6 +117,10 @@ export class LineMessagingClientService {
 }
 
 function buildReviewCardBubble(card: { progressId: string; front: string }) {
+  const expiresAt = new Date(
+    Date.now() + INTERRUPTED_REVIEW_EXPIRATION_MS,
+  ).toISOString();
+
   return {
     type: 'bubble',
     size: 'mega',
@@ -153,7 +158,7 @@ function buildReviewCardBubble(card: { progressId: string; front: string }) {
           action: {
             type: 'postback',
             label: '答えを見る',
-            data: `action=show_answer&progressId=${card.progressId}`,
+            data: `action=show_answer&progressId=${card.progressId}&expiresAt=${encodeURIComponent(expiresAt)}`,
             displayText: '答えを見る',
           },
         },
@@ -169,6 +174,10 @@ function buildAnswerCardBubble(card: {
   example: string | null;
   note: string | null;
 }) {
+  const expiresAt = new Date(
+    Date.now() + INTERRUPTED_REVIEW_EXPIRATION_MS,
+  ).toISOString();
+
   return {
     type: 'bubble',
     size: 'mega',
@@ -214,13 +223,26 @@ function buildAnswerCardBubble(card: {
       layout: 'vertical',
       spacing: 'sm',
       contents: [
-        buildReviewResultButton(card.progressId, '完璧', 'perfect', '#16a34a'),
-        buildReviewResultButton(card.progressId, 'まあまあ', 'good', '#2563eb'),
+        buildReviewResultButton(
+          card.progressId,
+          '完璧',
+          'perfect',
+          '#16a34a',
+          expiresAt,
+        ),
+        buildReviewResultButton(
+          card.progressId,
+          'まあまあ',
+          'good',
+          '#2563eb',
+          expiresAt,
+        ),
         buildReviewResultButton(
           card.progressId,
           'もう一回',
           'again',
           '#dc2626',
+          expiresAt,
         ),
       ],
     },
@@ -256,7 +278,12 @@ function buildReviewResultButton(
   label: string,
   grade: string,
   color: string,
+  expiresAt?: string,
 ) {
+  const encodedExpiresAt = expiresAt
+    ? `&expiresAt=${encodeURIComponent(expiresAt)}`
+    : '';
+
   return {
     type: 'button',
     style: 'primary',
@@ -264,7 +291,7 @@ function buildReviewResultButton(
     action: {
       type: 'postback',
       label,
-      data: `action=record_review&progressId=${progressId}&grade=${grade}`,
+      data: `action=record_review&progressId=${progressId}&grade=${grade}${encodedExpiresAt}`,
       displayText: label,
     },
   };

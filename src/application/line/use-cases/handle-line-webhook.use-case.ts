@@ -3,7 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { AuthProvider, CardProgressStatus } from '@prisma/client';
 import { LineMessagingClientService } from '../../../infrastructure/line/line-messaging-client.service';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
-import { MASTERED_INTERVAL_DAYS } from '../review-schedule.constants';
+import {
+  INTERRUPTED_REVIEW_EXPIRATION_MS,
+  MASTERED_INTERVAL_DAYS,
+} from '../review-schedule.constants';
 import { LineWebhookPayloadDto } from '../dto/line-webhook-payload.dto';
 
 @Injectable()
@@ -149,6 +152,15 @@ export class HandleLineWebhookUseCase {
       return;
     }
 
+    const now = new Date();
+    if (this.isExpiredPostback(data.get('expiresAt'), progress, now)) {
+      await this.lineMessagingClient.replyText(
+        event.replyToken,
+        'この復習カードの有効期限が過ぎています。もう一度「復習する」から開き直してください。',
+      );
+      return;
+    }
+
     if (action === 'record_review') {
       await this.recordReviewResult(
         event.replyToken,
@@ -162,7 +174,7 @@ export class HandleLineWebhookUseCase {
       where: { id: progress.id },
       data: {
         status: CardProgressStatus.ANSWERED,
-        answeredAt: new Date(),
+        answeredAt: now,
       },
     });
 
@@ -201,6 +213,8 @@ export class HandleLineWebhookUseCase {
     }
 
     const now = new Date();
+    await this.resetStaleInterruptedProgress(account.userId, now);
+
     const progress = await this.findOrCreateDueProgress(account.userId, now);
     if (!progress) {
       await this.lineMessagingClient.replyText(
@@ -278,6 +292,50 @@ export class HandleLineWebhookUseCase {
         dueAt: now,
       },
       include: { card: true },
+    });
+  }
+
+  private isExpiredPostback(
+    expiresAt: string | null,
+    progress: {
+      askedAt: Date | null;
+      answeredAt: Date | null;
+    },
+    now: Date,
+  ) {
+    if (expiresAt) {
+      const expiresAtDate = new Date(expiresAt);
+      return Number.isNaN(expiresAtDate.getTime()) || expiresAtDate <= now;
+    }
+
+    const touchedAt = progress.answeredAt ?? progress.askedAt;
+    if (!touchedAt) {
+      return false;
+    }
+
+    return (
+      touchedAt.getTime() <=
+      now.getTime() - INTERRUPTED_REVIEW_EXPIRATION_MS
+    );
+  }
+
+  private async resetStaleInterruptedProgress(userId: string, now: Date) {
+    const staleBefore = new Date(
+      now.getTime() - INTERRUPTED_REVIEW_EXPIRATION_MS,
+    );
+
+    await this.prisma.cardProgress.updateMany({
+      where: {
+        userId,
+        status: {
+          in: [CardProgressStatus.ASKED, CardProgressStatus.ANSWERED],
+        },
+        updatedAt: { lte: staleBefore },
+      },
+      data: {
+        status: CardProgressStatus.QUEUED,
+        dueAt: now,
+      },
     });
   }
 

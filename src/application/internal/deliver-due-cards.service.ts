@@ -3,7 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { AuthProvider, CardProgressStatus } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { LineMessagingClientService } from '../../infrastructure/line/line-messaging-client.service';
-import { MASTERED_INTERVAL_DAYS } from '../line/review-schedule.constants';
+import {
+  INTERRUPTED_REVIEW_EXPIRATION_MS,
+  MASTERED_INTERVAL_DAYS,
+} from '../line/review-schedule.constants';
 
 type DeliverDueCardsInput = {
   dryRun?: boolean;
@@ -36,6 +39,10 @@ export class DeliverDueCardsService {
     }> = [];
 
     for (const account of accounts) {
+      if (!input.dryRun) {
+        await this.resetStaleInterruptedProgress(account.userId, now);
+      }
+
       const progress = await this.findOrCreateDueProgress(account.userId, now);
 
       if (!progress) {
@@ -143,6 +150,26 @@ export class DeliverDueCardsService {
         dueAt: now,
       },
       include: { card: true },
+    });
+  }
+
+  private async resetStaleInterruptedProgress(userId: string, now: Date) {
+    const staleBefore = new Date(
+      now.getTime() - INTERRUPTED_REVIEW_EXPIRATION_MS,
+    );
+
+    await this.prisma.cardProgress.updateMany({
+      where: {
+        userId,
+        status: {
+          in: [CardProgressStatus.ASKED, CardProgressStatus.ANSWERED],
+        },
+        updatedAt: { lte: staleBefore },
+      },
+      data: {
+        status: CardProgressStatus.QUEUED,
+        dueAt: now,
+      },
     });
   }
 }

@@ -1,1 +1,2 @@
 export const MASTERED_INTERVAL_DAYS = -1;
+export const INTERRUPTED_REVIEW_EXPIRATION_MS = 24 * 60 * 60 * 1000;

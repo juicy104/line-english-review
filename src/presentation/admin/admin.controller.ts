@@ -261,6 +261,20 @@ const adminHtml = `<!doctype html>
       justify-content: flex-end;
       margin-top: 12px;
     }
+    .filter-row {
+      align-items: end;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      margin-bottom: 12px;
+    }
+    .filter-row label { margin-top: 0; }
+    .filter-count {
+      color: var(--muted);
+      font-size: 12px;
+      padding-bottom: 11px;
+      white-space: nowrap;
+    }
     .form-grid {
       display: grid;
       gap: 12px;
@@ -321,6 +335,8 @@ const adminHtml = `<!doctype html>
         color: var(--accent-dark);
       }
       .form-grid { grid-template-columns: 1fr; }
+      .filter-row { grid-template-columns: 1fr; }
+      .filter-count { padding-bottom: 0; }
       .topbar { align-items: flex-start; flex-direction: column; }
       .status { text-align: left; }
       main { padding: 12px; }
@@ -433,6 +449,13 @@ const adminHtml = `<!doctype html>
       <h2>Cards</h2>
       <label for="cardsDeckSelect">Deck</label>
       <select id="cardsDeckSelect"></select>
+      <div class="filter-row">
+        <div>
+          <label for="cardFilter">Filter</label>
+          <input id="cardFilter" type="search" placeholder="Search front, back, example, note">
+        </div>
+        <div id="cardFilterCount" class="filter-count"></div>
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -535,7 +558,18 @@ const adminHtml = `<!doctype html>
     async function loadCards() {
       const deckId = selectedCardsDeckId() || selectedAddDeckId();
       state.cards = deckId ? await api('/admin/api/cards?deckId=' + encodeURIComponent(deckId)) || [] : [];
-      $('cardsBody').innerHTML = state.cards.map(renderCardRow).join('') || '<tr><td colspan="5" class="muted">No cards</td></tr>';
+      renderCards();
+    }
+
+    function renderCards() {
+      const query = normalizeSearch($('cardFilter').value);
+      const filteredCards = query
+        ? state.cards.filter((card) => cardMatchesQuery(card, query))
+        : state.cards;
+      $('cardsBody').innerHTML = filteredCards.map(renderCardRow).join('') || '<tr><td colspan="5" class="muted">' + (state.cards.length ? 'No matching cards' : 'No cards') + '</td></tr>';
+      $('cardFilterCount').textContent = query
+        ? filteredCards.length + ' / ' + state.cards.length + ' cards'
+        : state.cards.length + ' cards';
     }
 
     function renderCardRow(card) {
@@ -546,6 +580,15 @@ const adminHtml = `<!doctype html>
         '<td data-label="Note"><textarea data-field="note">' + escapeHtml(card.note || '') + '</textarea></td>' +
         '<td class="actions"><div class="row"><button class="secondary" data-action="save" type="button">Save</button><button class="danger" data-action="delete" type="button">Delete</button></div></td>' +
       '</tr>';
+    }
+
+    function cardMatchesQuery(card, query) {
+      return [card.front, card.back, card.example, card.note]
+        .some((value) => normalizeSearch(value).includes(query));
+    }
+
+    function normalizeSearch(value) {
+      return String(value || '').trim().toLowerCase();
     }
 
     document.querySelectorAll('nav button').forEach((button) => {
@@ -560,6 +603,7 @@ const adminHtml = `<!doctype html>
       $('cardsDeckSelect').value = selectedAddDeckId();
     });
     $('cardsDeckSelect').addEventListener('change', loadCards);
+    $('cardFilter').addEventListener('input', renderCards);
 
     $('deckForm').addEventListener('submit', async (event) => {
       event.preventDefault();

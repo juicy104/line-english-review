@@ -60,9 +60,40 @@ export class AdminController {
     return this.adminService.createDeck(this.requireUserId(request), body);
   }
 
+  @Put('api/decks/:id/default')
+  setDefaultDeck(@Req() request: Request, @Param('id') id: string) {
+    return this.adminService.setDefaultDeck(this.requireUserId(request), id);
+  }
+
+  @Get('api/decks/:id/export-csv')
+  async exportCardsToCsv(
+    @Req() request: Request,
+    @Param('id') id: string,
+    @Res() response: Response,
+  ) {
+    const csv = await this.adminService.exportCardsToCsv(
+      this.requireUserId(request),
+      id,
+    );
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    response.setHeader(
+      'Content-Disposition',
+      'attachment; filename="deck-' + encodeURIComponent(id) + '.csv"',
+    );
+    response.send(csv);
+  }
+
   @Get('api/cards')
-  listCards(@Req() request: Request, @Query('deckId') deckId: string) {
-    return this.adminService.listCards(this.requireUserId(request), deckId);
+  listCards(
+    @Req() request: Request,
+    @Query('deckId') deckId: string,
+    @Query('q') query?: string,
+  ) {
+    return this.adminService.listCards(
+      this.requireUserId(request),
+      deckId,
+      query,
+    );
   }
 
   @Post('api/cards')
@@ -289,22 +320,19 @@ const adminHtml = `<!doctype html>
       grid-template-columns: minmax(0, 1fr) auto;
       padding: 10px 0;
     }
-    table { border-collapse: collapse; width: 100%; }
-    th, td {
-      border-bottom: 1px solid var(--line);
-      padding: 9px 8px;
-      text-align: left;
-      vertical-align: top;
+    .card-editor {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-bottom: 16px;
+      padding: 12px;
     }
-    th {
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
+    .card-editor > div { min-width: 0; }
+    .card-editor textarea { overflow: hidden; overflow-wrap: anywhere; }
+    .deck-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .export-link { color: var(--accent-dark); display: inline-block; padding: 10px 0; }
+    @media (max-width: 760px) {
+      .deck-row { grid-template-columns: 1fr; }
     }
-    td.actions { width: 150px; }
-    .row { display: flex; gap: 8px; }
-    .row > * { flex: 1; }
-    .table-wrap { overflow: auto; }
     @media (max-width: 760px) {
       body { padding-bottom: 70px; }
       header {
@@ -347,31 +375,6 @@ const adminHtml = `<!doctype html>
         margin: 0 -12px;
         padding: 14px 12px;
       }
-      table, thead, tbody, tr, th, td { display: block; }
-      thead { display: none; }
-      tr {
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        margin-bottom: 12px;
-        padding: 10px;
-      }
-      td {
-        border-bottom: 0;
-        padding: 7px 0;
-      }
-      td::before {
-        color: var(--muted);
-        content: attr(data-label);
-        display: block;
-        font-size: 12px;
-        font-weight: 700;
-        margin-bottom: 4px;
-      }
-      td.actions {
-        width: auto;
-      }
-      td.actions::before { content: ''; display: none; }
-      .row { gap: 10px; }
     }
   </style>
 </head>
@@ -449,6 +452,7 @@ const adminHtml = `<!doctype html>
       <h2>Cards</h2>
       <label for="cardsDeckSelect">Deck</label>
       <select id="cardsDeckSelect"></select>
+      <a id="exportCsvLink" class="export-link" hidden>Export Deck CSV</a>
       <div class="filter-row">
         <div>
           <label for="cardFilter">Filter</label>
@@ -456,24 +460,12 @@ const adminHtml = `<!doctype html>
         </div>
         <div id="cardFilterCount" class="filter-count"></div>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Front</th>
-              <th>Back</th>
-              <th>Example</th>
-              <th>Note</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="cardsBody"></tbody>
-        </table>
-      </div>
+      <div id="cardsBody"></div>
     </section>
   </main>
   <script>
     const state = { users: [], decks: [], cards: [] };
+    let searchTimer;
     const $ = (id) => document.getElementById(id);
     const status = (message, busy = false) => {
       const element = $('status');
@@ -542,53 +534,98 @@ const adminHtml = `<!doctype html>
     }
 
     function renderDeckSelects() {
+      const addDeckId = selectedAddDeckId();
+      const cardsDeckId = selectedCardsDeckId();
+      const defaultDeckId = state.decks.find((deck) => deck.isDefault)?.id || state.decks[state.decks.length - 1]?.id;
       const options = state.decks.map((deck) => {
-        return '<option value="' + deck.id + '">' + escapeHtml(deck.name) + ' (' + deck._count.cards + ')</option>';
+        return '<option value="' + escapeAttr(deck.id) + '">' + escapeHtml(deck.name) + (deck.isDefault ? ' · Default' : '') + ' (' + deck._count.cards + ')</option>';
       }).join('');
       $('addDeckSelect').innerHTML = options;
       $('cardsDeckSelect').innerHTML = options;
+      $('addDeckSelect').value = state.decks.some((deck) => deck.id === addDeckId) ? addDeckId : defaultDeckId || '';
+      $('cardsDeckSelect').value = state.decks.some((deck) => deck.id === cardsDeckId) ? cardsDeckId : defaultDeckId || '';
+      updateExportLink();
+      renderDecks();
     }
 
     function renderDecks() {
       $('deckList').innerHTML = state.decks.map((deck) => {
-        return '<div class="deck-row"><div><strong>' + escapeHtml(deck.name) + '</strong><div class="muted">' + (deck._count.cards || 0) + ' cards' + (deck.description ? ' · ' + escapeHtml(deck.description) : '') + '</div></div></div>';
+        return '<div class="deck-row"><div><strong>' + escapeHtml(deck.name) + '</strong>' + (deck.isDefault ? ' · Default' : '') + '<div class="muted">' + (deck._count.cards || 0) + ' cards' + (deck.description ? ' · ' + escapeHtml(deck.description) : '') + '</div></div><div class="deck-actions">' +
+          (deck.isDefault ? '' : '<button type="button" class="secondary" data-default-deck="' + escapeAttr(deck.id) + '">Set as Default</button>') +
+          '<a class="export-link" href="/admin/api/decks/' + encodeURIComponent(deck.id) + '/export-csv">Export CSV</a></div></div>';
       }).join('') || '<p class="muted">No decks</p>';
     }
 
+    function updateExportLink() {
+      const deckId = selectedCardsDeckId();
+      $('exportCsvLink').hidden = !deckId;
+      $('exportCsvLink').href = '/admin/api/decks/' + encodeURIComponent(deckId) + '/export-csv';
+    }
+
     async function loadCards() {
+      updateExportLink();
       const deckId = selectedCardsDeckId() || selectedAddDeckId();
-      state.cards = deckId ? await api('/admin/api/cards?deckId=' + encodeURIComponent(deckId)) || [] : [];
+      const query = normalizeSearch($('cardFilter').value);
+      const params = new URLSearchParams({ deckId });
+      if (query) params.set('q', query);
+      state.cards = deckId ? await api('/admin/api/cards?' + params.toString()) || [] : [];
       renderCards();
     }
 
     function renderCards() {
       const query = normalizeSearch($('cardFilter').value);
-      const filteredCards = query
-        ? state.cards.filter((card) => cardMatchesQuery(card, query))
-        : state.cards;
-      $('cardsBody').innerHTML = filteredCards.map(renderCardRow).join('') || '<tr><td colspan="5" class="muted">' + (state.cards.length ? 'No matching cards' : 'No cards') + '</td></tr>';
+      $('cardsBody').innerHTML = state.cards.map(renderCardRow).join('') || '<p class="muted">' + (query ? 'No matching cards' : 'No cards') + '</p>';
+      $('cardsBody').querySelectorAll('textarea').forEach(resizeTextarea);
       $('cardFilterCount').textContent = query
-        ? filteredCards.length + ' / ' + state.cards.length + ' cards'
+        ? state.cards.length + ' matching cards'
         : state.cards.length + ' cards';
     }
 
     function renderCardRow(card) {
-      return '<tr data-card-id="' + card.id + '">' +
-        '<td data-label="Front"><input data-field="front" value="' + escapeAttr(card.front) + '"></td>' +
-        '<td data-label="Back"><input data-field="back" value="' + escapeAttr(card.back) + '"></td>' +
-        '<td data-label="Example"><textarea data-field="example">' + escapeHtml(card.example || '') + '</textarea></td>' +
-        '<td data-label="Note"><textarea data-field="note">' + escapeHtml(card.note || '') + '</textarea></td>' +
-        '<td class="actions"><div class="row"><button class="secondary" data-action="save" type="button">Save</button><button class="danger" data-action="delete" type="button">Delete</button></div></td>' +
-      '</tr>';
+      return '<article class="card-editor form-grid" data-card-id="' + escapeAttr(card.id) + '">' +
+        ['front', 'back', 'example', 'note'].map((field) =>
+          '<div' + (field === 'front' || field === 'back' ? ' class="full"' : '') + '><label>' + field[0].toUpperCase() + field.slice(1) +
+          '<textarea data-field="' + field + '">' + escapeHtml(card[field] || '') + '</textarea></label></div>'
+        ).join('') +
+        '<div class="toolbar full"><button class="secondary" data-action="save" type="button">Save</button><button class="danger" data-action="delete" type="button">Delete</button></div>' +
+      '</article>';
     }
 
-    function cardMatchesQuery(card, query) {
-      return [card.front, card.back, card.example, card.note]
-        .some((value) => normalizeSearch(value).includes(query));
+    function resizeTextarea(textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = (textarea.scrollHeight + 2) + 'px';
     }
+
+    $('cardsBody').addEventListener('input', (event) => {
+      if (event.target.matches('textarea')) resizeTextarea(event.target);
+    });
+    window.addEventListener('resize', () => {
+      if (!$('view-cards').hidden) $('cardsBody').querySelectorAll('textarea').forEach(resizeTextarea);
+    });
+
+    $('deckList').addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-default-deck]');
+      if (!button) return;
+      try {
+        await withLoading(button, 'Saving default', async () => {
+          const deckId = button.dataset.defaultDeck;
+          await api('/admin/api/decks/' + encodeURIComponent(deckId) + '/default', { method: 'PUT' });
+          await loadDecks();
+          $('addDeckSelect').value = deckId;
+        });
+        status('Default deck saved');
+      } catch (error) { status(error.message); }
+    });
 
     function normalizeSearch(value) {
       return String(value || '').trim().toLowerCase();
+    }
+
+    function queueCardSearch() {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        loadCards().catch((error) => status(error.message));
+      }, 250);
     }
 
     document.querySelectorAll('nav button').forEach((button) => {
@@ -601,9 +638,10 @@ const adminHtml = `<!doctype html>
 
     $('addDeckSelect').addEventListener('change', () => {
       $('cardsDeckSelect').value = selectedAddDeckId();
+      updateExportLink();
     });
     $('cardsDeckSelect').addEventListener('change', loadCards);
-    $('cardFilter').addEventListener('input', renderCards);
+    $('cardFilter').addEventListener('input', queueCardSearch);
 
     $('deckForm').addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -663,7 +701,7 @@ const adminHtml = `<!doctype html>
     $('cardsBody').addEventListener('click', async (event) => {
       const button = event.target.closest('button');
       if (!button) return;
-      const row = button.closest('tr');
+      const row = button.closest('[data-card-id]');
       const id = row.dataset.cardId;
       if (button.dataset.action === 'delete') {
         if (!confirm('Delete this card?')) return;

@@ -39,21 +39,38 @@ export class AdminService {
     });
   }
 
-  listDecks(userId: string) {
-    return this.prisma.deck.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        _count: {
-          select: { cards: true },
+  async listDecks(userId: string) {
+    const [user, decks] = await Promise.all([
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { defaultDeckId: true },
+      }),
+      this.prisma.deck.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          _count: {
+            select: { cards: true },
+          },
         },
-      },
-    });
+      }),
+    ]);
+    return decks.map((deck) => ({
+      ...deck,
+      isDefault: deck.id === user.defaultDeckId,
+    }));
   }
 
   async getOrCreateDefaultDeck(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { defaultDeckId: true },
+    });
     const existing = await this.prisma.deck.findFirst({
-      where: { userId },
+      where: {
+        userId,
+        ...(user.defaultDeckId ? { id: user.defaultDeckId } : {}),
+      },
       orderBy: { createdAt: 'asc' },
       include: {
         _count: {
@@ -63,10 +80,11 @@ export class AdminService {
     });
 
     if (existing) {
+      if (!user.defaultDeckId) await this.setDefaultDeck(userId, existing.id);
       return existing;
     }
 
-    return this.prisma.deck.create({
+    const deck = await this.prisma.deck.create({
       data: {
         userId,
         name: 'Default',
@@ -77,6 +95,37 @@ export class AdminService {
         },
       },
     });
+    await this.setDefaultDeck(userId, deck.id);
+    return deck;
+  }
+
+  async setDefaultDeck(userId: string, deckId: string) {
+    await this.assertDeckOwner(userId, deckId);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { defaultDeckId: deckId },
+    });
+    return { defaultDeckId: deckId };
+  }
+
+  async exportCardsToCsv(userId: string, deckId: string) {
+    await this.assertDeckOwner(userId, deckId);
+    const cards = await this.listCards(userId, deckId);
+    const rows = [
+      ['front', 'back', 'example', 'note'],
+      ...cards.map((card) => [card.front, card.back, card.example, card.note]),
+    ];
+    return (
+      '\uFEFF' +
+      rows
+        .map((row) =>
+          row
+            .map((cell) => '"' + (cell ?? '').replace(/"/g, '""') + '"')
+            .join(','),
+        )
+        .join('\r\n') +
+      '\r\n'
+    );
   }
 
   createDeck(userId: string, input: CreateDeckInput) {
@@ -89,9 +138,21 @@ export class AdminService {
     });
   }
 
-  listCards(userId: string, deckId: string) {
+  listCards(userId: string, deckId: string, query?: string) {
+    const search = query?.trim();
+
     return this.prisma.card.findMany({
-      where: { deckId, deck: { userId } },
+      where: {
+        deckId,
+        deck: { userId },
+        ...(search
+          ? {
+              OR: ['front', 'back', 'example', 'note'].map((field) => ({
+                [field]: { contains: search, mode: 'insensitive' },
+              })),
+            }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

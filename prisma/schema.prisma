@@ -18,13 +18,15 @@ enum CardProgressStatus {
 }
 
 model User {
-  id           String         @id @default(cuid())
-  displayName  String?
-  authAccounts AuthAccount[]
-  decks        Deck[]
-  progress     CardProgress[]
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id            String         @id @default(cuid())
+  displayName   String?
+  authAccounts  AuthAccount[]
+  decks         Deck[]
+  defaultDeckId String?
+  defaultDeck   Deck?          @relation("DefaultDeck", fields: [defaultDeckId], references: [id], onDelete: SetNull)
+  progress      CardProgress[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
 
 model AuthAccount {
@@ -47,6 +49,7 @@ model Deck {
   description String?
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   cards       Card[]
+  defaultFor  User[]   @relation("DefaultDeck")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

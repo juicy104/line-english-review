@@ -103,6 +103,18 @@ https://<ngrokのURL>/line/webhook
 http://localhost:3000/admin
 ```
 
+Decks の「Set as Default」でカード追加時に初期選択するデッキを保存できます。
+カード一覧の Front / Back は上下の行に全文を表示します。
+Decks の「Export CSV」、または Cards の「Export Deck CSV」で、デッキ内の全カードを
+`front,back,example,note` の4項目でダウンロードできます（検索条件は適用されません）。
+出力は日本語対応の UTF-8 BOM 付きで、CSV Import でも取り込めます。
+
+デフォルトデッキ設定用のDB変更を反映するには、アプリ起動前にマイグレーションを適用してください。
+
+```bash
+docker compose run --rm app npx prisma migrate deploy
+```
+
 未ログインの場合はLINE Loginへリダイレクトします。LINE DevelopersのLINE Login Channelに、次のcallback URLを登録してください。
 
 ```text

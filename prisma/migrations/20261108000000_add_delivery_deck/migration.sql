@@ -1,0 +1,4 @@
+ALTER TABLE "User" ADD COLUMN "deliveryDeckId" TEXT;
+
+ALTER TABLE "User" ADD CONSTRAINT "User_deliveryDeckId_fkey"
+FOREIGN KEY ("deliveryDeckId") REFERENCES "Deck"("id") ON DELETE SET NULL ON UPDATE CASCADE;

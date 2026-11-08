@@ -28,6 +28,7 @@ export class DeliverDueCardsService {
     const nextDueAt = new Date(now.getTime() + snoozeMinutes * 60 * 1000);
     const accounts = await this.prisma.authAccount.findMany({
       where: { provider: AuthProvider.LINE },
+      include: { user: { select: { deliveryDeckId: true } } },
       orderBy: { createdAt: 'asc' },
     });
     const results: Array<{
@@ -43,7 +44,11 @@ export class DeliverDueCardsService {
         await this.resetStaleInterruptedProgress(account.userId, now);
       }
 
-      const progress = await this.findOrCreateDueProgress(account.userId, now);
+      const progress = await this.findOrCreateDueProgress(
+        account.userId,
+        now,
+        account.user.deliveryDeckId,
+      );
 
       if (!progress) {
         results.push({
@@ -103,13 +108,19 @@ export class DeliverDueCardsService {
     };
   }
 
-  private async findOrCreateDueProgress(userId: string, now: Date) {
+  private async findOrCreateDueProgress(
+    userId: string,
+    now: Date,
+    deckId: string | null,
+  ) {
+    const cardFilter = { deck: { userId }, ...(deckId ? { deckId } : {}) };
     const progress = await this.prisma.cardProgress.findFirst({
       where: {
         userId,
         status: CardProgressStatus.QUEUED,
         dueAt: { lte: now },
         intervalDays: { not: MASTERED_INTERVAL_DAYS },
+        card: cardFilter,
       },
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
       include: { card: true },
@@ -121,7 +132,7 @@ export class DeliverDueCardsService {
 
     const cardWithoutProgress = await this.prisma.card.findFirst({
       where: {
-        deck: { userId },
+        ...cardFilter,
         progress: {
           none: { userId },
         },
@@ -136,6 +147,7 @@ export class DeliverDueCardsService {
           status: CardProgressStatus.QUEUED,
           dueAt: { lte: now },
           intervalDays: MASTERED_INTERVAL_DAYS,
+          card: cardFilter,
         },
         orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
         include: { card: true },

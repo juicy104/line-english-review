@@ -65,6 +65,14 @@ export class AdminController {
     return this.adminService.setDefaultDeck(this.requireUserId(request), id);
   }
 
+  @Put('api/settings/delivery-deck')
+  setDeliveryDeck(@Req() request: Request, @Body() body: { deckId?: unknown }) {
+    return this.adminService.setDeliveryDeck(
+      this.requireUserId(request),
+      body?.deckId,
+    );
+  }
+
   @Get('api/decks/:id/export-csv')
   async exportCardsToCsv(
     @Req() request: Request,
@@ -432,6 +440,14 @@ const adminHtml = `<!doctype html>
 
     <section id="view-decks" hidden>
       <h2>Decks</h2>
+      <form id="deliveryDeckForm">
+        <h3>LINE配信デッキ</h3>
+        <p class="muted">定期配信と「復習する」で出題するデッキを固定します。選択したデッキに出題できるカードがない場合は配信しません。</p>
+        <label for="deliveryDeckSelect">配信するデッキ</label>
+        <select id="deliveryDeckSelect"></select>
+        <div class="toolbar"><button type="submit">配信デッキを保存</button></div>
+      </form>
+      <hr>
       <form id="deckForm" class="form-grid">
         <div>
           <label for="deckName">Name</label>
@@ -542,6 +558,8 @@ const adminHtml = `<!doctype html>
       }).join('');
       $('addDeckSelect').innerHTML = options;
       $('cardsDeckSelect').innerHTML = options;
+      $('deliveryDeckSelect').innerHTML = '<option value="">すべてのデッキ</option>' + options;
+      $('deliveryDeckSelect').value = state.decks.find((deck) => deck.isDeliveryDeck)?.id || '';
       $('addDeckSelect').value = state.decks.some((deck) => deck.id === addDeckId) ? addDeckId : defaultDeckId || '';
       $('cardsDeckSelect').value = state.decks.some((deck) => deck.id === cardsDeckId) ? cardsDeckId : defaultDeckId || '';
       updateExportLink();
@@ -642,6 +660,20 @@ const adminHtml = `<!doctype html>
     });
     $('cardsDeckSelect').addEventListener('change', loadCards);
     $('cardFilter').addEventListener('input', queueCardSearch);
+
+    $('deliveryDeckForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const deckId = $('deliveryDeckSelect').value || null;
+      try {
+        await withLoading(event.target, '保存中', async () => {
+          await api('/admin/api/settings/delivery-deck', {
+            method: 'PUT', body: JSON.stringify({ deckId }),
+          });
+          await loadDecks();
+        });
+        status('LINE配信デッキを保存しました');
+      } catch (error) { status(error.message); }
+    });
 
     $('deckForm').addEventListener('submit', async (event) => {
       event.preventDefault();

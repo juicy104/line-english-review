@@ -202,6 +202,7 @@ export class HandleLineWebhookUseCase {
           providerUserId: lineUserId,
         },
       },
+      include: { user: { select: { deliveryDeckId: true } } },
     });
 
     if (!account) {
@@ -215,7 +216,11 @@ export class HandleLineWebhookUseCase {
     const now = new Date();
     await this.resetStaleInterruptedProgress(account.userId, now);
 
-    const progress = await this.findOrCreateDueProgress(account.userId, now);
+    const progress = await this.findOrCreateDueProgress(
+      account.userId,
+      now,
+      account.user.deliveryDeckId,
+    );
     if (!progress) {
       await this.lineMessagingClient.replyText(
         replyToken,
@@ -245,13 +250,19 @@ export class HandleLineWebhookUseCase {
     });
   }
 
-  private async findOrCreateDueProgress(userId: string, now: Date) {
+  private async findOrCreateDueProgress(
+    userId: string,
+    now: Date,
+    deckId: string | null,
+  ) {
+    const cardFilter = { deck: { userId }, ...(deckId ? { deckId } : {}) };
     const progress = await this.prisma.cardProgress.findFirst({
       where: {
         userId,
         status: CardProgressStatus.QUEUED,
         dueAt: { lte: now },
         intervalDays: { not: MASTERED_INTERVAL_DAYS },
+        card: cardFilter,
       },
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
       include: { card: true },
@@ -263,7 +274,7 @@ export class HandleLineWebhookUseCase {
 
     const cardWithoutProgress = await this.prisma.card.findFirst({
       where: {
-        deck: { userId },
+        ...cardFilter,
         progress: {
           none: { userId },
         },
@@ -278,6 +289,7 @@ export class HandleLineWebhookUseCase {
           status: CardProgressStatus.QUEUED,
           dueAt: { lte: now },
           intervalDays: MASTERED_INTERVAL_DAYS,
+          card: cardFilter,
         },
         orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
         include: { card: true },
@@ -314,8 +326,7 @@ export class HandleLineWebhookUseCase {
     }
 
     return (
-      touchedAt.getTime() <=
-      now.getTime() - INTERRUPTED_REVIEW_EXPIRATION_MS
+      touchedAt.getTime() <= now.getTime() - INTERRUPTED_REVIEW_EXPIRATION_MS
     );
   }
 

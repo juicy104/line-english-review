@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
 type CreateDeckInput = {
@@ -43,7 +43,7 @@ export class AdminService {
     const [user, decks] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
-        select: { defaultDeckId: true },
+        select: { defaultDeckId: true, deliveryDeckId: true },
       }),
       this.prisma.deck.findMany({
         where: { userId },
@@ -58,6 +58,7 @@ export class AdminService {
     return decks.map((deck) => ({
       ...deck,
       isDefault: deck.id === user.defaultDeckId,
+      isDeliveryDeck: deck.id === user.deliveryDeckId,
     }));
   }
 
@@ -106,6 +107,18 @@ export class AdminService {
       data: { defaultDeckId: deckId },
     });
     return { defaultDeckId: deckId };
+  }
+
+  async setDeliveryDeck(userId: string, deckId: unknown) {
+    if (deckId !== null && (typeof deckId !== 'string' || !deckId.trim())) {
+      throw new BadRequestException('deckId must be a deck ID or null');
+    }
+    if (typeof deckId === 'string') await this.assertDeckOwner(userId, deckId);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { deliveryDeckId: deckId as string | null },
+    });
+    return { deliveryDeckId: deckId };
   }
 
   async exportCardsToCsv(userId: string, deckId: string) {

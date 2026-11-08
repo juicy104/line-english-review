@@ -38,11 +38,14 @@ describe('AdminService deck preferences and CSV export', () => {
   });
 
   it('marks the persisted default even when a newer deck appears first', async () => {
-    prisma.user.findUniqueOrThrow.mockResolvedValue({ defaultDeckId: 'old' });
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      defaultDeckId: 'old',
+      deliveryDeckId: 'new',
+    });
     prisma.deck.findMany.mockResolvedValue([{ id: 'new' }, { id: 'old' }]);
     await expect(service.listDecks('user-1')).resolves.toEqual([
-      { id: 'new', isDefault: false },
-      { id: 'old', isDefault: true },
+      { id: 'new', isDefault: false, isDeliveryDeck: true },
+      { id: 'old', isDefault: true, isDeliveryDeck: false },
     ]);
   });
 
@@ -62,7 +65,7 @@ describe('AdminService deck preferences and CSV export', () => {
     expect(prisma.deck.create).not.toHaveBeenCalled();
   });
 
-  it.each(['setDefaultDeck', 'exportCardsToCsv'] as const)(
+  it.each(['setDefaultDeck', 'setDeliveryDeck', 'exportCardsToCsv'] as const)(
     '%s refuses a deck not owned by the user',
     async (method) => {
       prisma.deck.findFirstOrThrow.mockRejectedValue(new Error('Not found'));
@@ -71,6 +74,41 @@ describe('AdminService deck preferences and CSV export', () => {
       );
       expect(prisma.user.update).not.toHaveBeenCalled();
       expect(prisma.card.findMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('saves a delivery deck independently of the add-card default', async () => {
+    await expect(service.setDeliveryDeck('user-1', 'deck-1')).resolves.toEqual({
+      deliveryDeckId: 'deck-1',
+    });
+    expect(prisma.deck.findFirstOrThrow).toHaveBeenCalledWith({
+      where: { id: 'deck-1', userId: 'user-1' },
+      select: { id: true },
+    });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { deliveryDeckId: 'deck-1' },
+    });
+  });
+
+  it('allows returning delivery to all decks', async () => {
+    await expect(service.setDeliveryDeck('user-1', null)).resolves.toEqual({
+      deliveryDeckId: null,
+    });
+    expect(prisma.deck.findFirstOrThrow).not.toHaveBeenCalled();
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { deliveryDeckId: null },
+    });
+  });
+
+  it.each([undefined, '', 42, {}])(
+    'rejects an invalid delivery deck value %s',
+    async (value) => {
+      await expect(service.setDeliveryDeck('user-1', value)).rejects.toThrow(
+        'deckId must be a deck ID or null',
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
     },
   );
 
